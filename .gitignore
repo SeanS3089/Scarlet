@@ -1,0 +1,34 @@
+# Secrets
+.env
+
+# IDE / Editor
+.vs/
+.vscode/
+
+# Python cache
+__pycache__/
+.ipynb_checkpoints/
+
+# Scarlet runtime files
+scarlet_memory.csv
+scarlet_narration_log.csv
+scarlet_encouragement_log.csv
+sentiment_history.csv
+sentiment_cache.json
+online_step.txt
+last_nonce.txt
+nonce_debug.log
+reward_trace.csv
+candle_cache_*.csv
+crypto_data.csv
+
+# Training artifacts
+checkpoints/
+runs/
+lightning_logs/
+*.ckpt
+
+# Data snapshots
+*.csv
+*.json
+*.txt
