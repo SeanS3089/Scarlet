@@ -24,6 +24,8 @@ Features
 
 
 
+
+
 Environment Setup (scarlet\_gemini)
 
 
@@ -35,6 +37,8 @@ pip install --pre torchaudio --index-url https://download.pytorch.org/whl/nightl
 pip install --pre torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
 
 pip install -r requirements.txt
+
+
 
 
 
@@ -66,6 +70,8 @@ python Scarlet\_Core.py
 
 
 
+
+
 Running Scarlet in CMD
 
 
@@ -82,6 +88,8 @@ python Scarlet\_Trainer.py
 
 
 
+
+
 Main Loop
 
 call conda activate scarlet\_gemini
@@ -91,6 +99,8 @@ D:
 cd D:\\Scarlet\_Works\\Scarlet
 
 python Scarlet\_Core.py
+
+
 
 
 
