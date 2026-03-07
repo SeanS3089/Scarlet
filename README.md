@@ -1,6 +1,6 @@
 Scarlet — Reinforcement‑Learning Market Engine
 
-A year in the making, Scarlet is a Python‑based reinforcement‑learning based market analysis engine designed for experimentation, offline training, and real‑time market evaluation(and automated trading if you really want to enable it). She includes a full market‑data engineering pipeline, a custom indicator system, GPU‑accelerated training, and a modular architecture built for research and future automated‑trading extensions. Automated trading is disabled by default for safety.
+A year in the making, Scarlet is a Python‑based reinforcement‑learning based market analysis/automated trading engine designed for experimentation, offline training, and real‑time market evaluation(and automated trading if you really want to enable it the toggle is at the top of scarlet_core.py). She includes a full market‑data engineering pipeline, a custom indicator system, GPU‑accelerated training, and a modular architecture built for research and future automated‑trading extensions. Automated trading is disabled by default for safety. It uses Gemini crypto exchange.
 
 
 
@@ -246,6 +246,8 @@ She was built to be:
 Scarlet is not a bot.
 
 She is a market‑reasoning engine — a place to study, test, and refine ideas safely.
+
+Ultimately the goal is to add other types of predictions, not just crypto. I have always believed we live too reactively. We need a way to see one step ahead rather than looking at our current footprint.
 
 
 
