@@ -31,4 +31,3 @@ lightning_logs/
 # Data snapshots
 *.csv
 *.json
-*.txt
