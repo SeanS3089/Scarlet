@@ -125,7 +125,7 @@ Features
 
 &nbsp;                │  - Narration / Logging                     │
 
-&nbsp;                │  - Safety Layer (No Auto‑Trading)          │
+&nbsp;                │  - Safety Layer (Auto Trading disabled by default)          │
 
 &nbsp;                └────────────────────────────────────────────┘
 
