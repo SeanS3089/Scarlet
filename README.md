@@ -137,7 +137,7 @@ Environment Setup (scarlet\_gemini)
 
 
 
-cd D:\\Scarlet\_Works\\Scarlet
+cd D:\\Scarlet\_Works\\Scarlet (or to whatever folder you have it stored in)
 
 pip install --pre torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
 
@@ -155,7 +155,7 @@ Anaconda Prompt (recommended)
 
 
 
-conda activate scarlet\_gemini
+conda activate scarlet\_gemini (replace file path to the folder you have Scarlet in)
 
 D:
 
@@ -185,7 +185,7 @@ Running Scarlet in CMD
 
 Trainer
 
-call conda activate scarlet\_gemini
+call conda activate scarlet\_gemini (replace file path to the folder you have Scarlet in)
 
 D:
 
@@ -199,7 +199,7 @@ python Scarlet\_Trainer.py
 
 Main Loop
 
-call conda activate scarlet\_gemini
+call conda activate scarlet\_gemini (replace file path to the folder you have Scarlet in)
 
 D:
 
