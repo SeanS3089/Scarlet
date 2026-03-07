@@ -1,0 +1,23 @@
+# IMPORTANT:
+# PyTorch, torchvision, and torchaudio must be installed manually
+# using the correct CUDA wheels for your GPU.
+# Example for NVIDIA 5000-series:
+# pip install --pre torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
+# pip install --pre torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
+
+numpy
+pandas
+matplotlib
+scikit-learn
+scipy
+tqdm
+requests
+schedule
+python-dateutil
+pytz
+ta
+mplfinance
+pytorch-lightning
+tensorboard
+tensorboardx
+torchmetrics
