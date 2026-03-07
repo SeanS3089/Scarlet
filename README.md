@@ -59,7 +59,8 @@ Features
 
 &nbsp;                    │  RSI • MACD • ATR • Bollinger       │
 
-&nbsp;                    │  VWAP • Slopes • Volume • Regimes   │
+&nbsp;                    │  VWAP • Slopes • Volume • Regimes
+                              Sentiment│
 
 &nbsp;                    └──────────────────┬──────────────────┘
 
