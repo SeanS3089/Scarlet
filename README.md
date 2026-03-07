@@ -25,95 +25,6 @@ Features
 
 
 
-
-Environment Setup (scarlet\_gemini)
-
-
-
-cd D:\\Scarlet\_Works\\Scarlet
-
-pip install --pre torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
-
-pip install --pre torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
-
-pip install -r requirements.txt
-
-
-
-
-
-Running Scarlet
-
-Anaconda Prompt (recommended)
-
-
-
-conda activate scarlet\_gemini
-
-D:
-
-cd D:\\Scarlet\_Works\\Scarlet
-
-
-
-Offline Trainer
-
-python Scarlet\_Trainer.py
-
-
-
-Main Live Loop
-
-python Scarlet\_Core.py
-
-
-
-
-
-
-
-Running Scarlet in CMD
-
-
-
-Trainer
-
-call conda activate scarlet\_gemini
-
-D:
-
-cd D:\\Scarlet\_Works\\Scarlet
-
-python Scarlet\_Trainer.py
-
-
-
-
-
-Main Loop
-
-call conda activate scarlet\_gemini
-
-D:
-
-cd D:\\Scarlet\_Works\\Scarlet
-
-python Scarlet\_Core.py
-
-
-
-
-
-Notes
-
-\- Automated trading is disabled by default for safety.
-
-\- Scarlet currently spawns multiple loops on startup; all but one exit after the first time.sleep(). This is a known issue under investigation.
-
-
-
-
-
 &nbsp;                          ┌──────────────────────────┐
 
 &nbsp;                          │      Market Feeds        │
@@ -217,6 +128,93 @@ Notes
 &nbsp;                │  - Safety Layer (No Auto‑Trading)          │
 
 &nbsp;                └────────────────────────────────────────────┘
+
+
+
+
+Environment Setup (scarlet\_gemini)
+
+
+
+cd D:\\Scarlet\_Works\\Scarlet
+
+pip install --pre torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
+
+pip install --pre torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
+
+pip install -r requirements.txt
+
+
+
+
+
+Running Scarlet
+
+Anaconda Prompt (recommended)
+
+
+
+conda activate scarlet\_gemini
+
+D:
+
+cd D:\\Scarlet\_Works\\Scarlet
+
+
+
+Offline Trainer
+
+python Scarlet\_Trainer.py
+
+
+
+Main Live Loop
+
+python Scarlet\_Core.py
+
+
+
+
+
+
+
+Running Scarlet in CMD
+
+
+
+Trainer
+
+call conda activate scarlet\_gemini
+
+D:
+
+cd D:\\Scarlet\_Works\\Scarlet
+
+python Scarlet\_Trainer.py
+
+
+
+
+
+Main Loop
+
+call conda activate scarlet\_gemini
+
+D:
+
+cd D:\\Scarlet\_Works\\Scarlet
+
+python Scarlet\_Core.py
+
+
+
+
+
+Notes
+
+\- Automated trading is disabled by default for safety.
+
+\- Scarlet currently spawns multiple loops on startup; all but one exit after the first time.sleep(). This is a known issue under investigation.
 
 
 
