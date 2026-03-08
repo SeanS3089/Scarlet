@@ -1,7 +1,57 @@
-Copyright (c) 2026 Oly Bee Co LLC.  
-All rights reserved.
+Scarlet Proprietary Software License Agreement
+Version 1.0 — © 2026 Sean S. / Oly Bee Co LLC. All rights reserved.
 
-This software is proprietary and confidential.  
-Unauthorized copying, modification, distribution, or use of this software,  
-via any medium, is strictly prohibited without prior written permission  
-from Oly Bee Co LLC.
+1. Ownership
+Scarlet, including all source code, binaries, assets, documentation, and
+associated files (“Software”), is the exclusive property of Sean S. /
+Oly Bee Co LLC (“Licensor”). This Software is licensed, not sold.
+
+2. Grant of License
+Licensor grants the Licensee a non-exclusive, non-transferable,
+revocable license to install and use the Software for personal or
+internal business purposes only.
+
+3. Restrictions
+Except where explicitly permitted in writing by Licensor, the Licensee
+may NOT:
+  • copy, distribute, or publish the Software or any portion of it
+  • modify, alter, or create derivative works from the Software
+  • reverse engineer, decompile, or attempt to extract source code
+  • sublicense, sell, rent, lease, or lend the Software
+  • use the Software to create competing products or services
+  • remove or alter copyright notices, branding, or attribution
+
+4. Intellectual Property
+All rights not expressly granted to the Licensee are reserved by the
+Licensor. No rights to trademarks, trade names, or branding are granted.
+
+5. Confidentiality
+The Software contains proprietary and confidential information. The
+Licensee agrees to protect this information and prevent unauthorized
+access or disclosure.
+
+6. Updates and Support
+Licensor may, but is not obligated to, provide updates, patches, or
+support. Any updates provided remain subject to this Agreement.
+
+7. Termination
+This license automatically terminates if the Licensee violates any term
+of this Agreement. Upon termination, the Licensee must immediately stop
+using the Software and delete all copies.
+
+8. Disclaimer of Warranty
+The Software is provided “AS IS” without warranties of any kind,
+express or implied. The Licensor does not guarantee performance,
+accuracy, or fitness for a particular purpose.
+
+9. Limitation of Liability
+To the maximum extent permitted by law, Licensor is not liable for any
+damages, including but not limited to loss of data, profits, or business
+interruption, arising from use of the Software.
+
+10. Governing Law
+This Agreement is governed by the laws of the State of Washington,
+without regard to conflict-of-law principles.
+
+By installing, copying, or using the Software, the Licensee agrees to be
+bound by the terms of this Agreement.
