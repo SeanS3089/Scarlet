@@ -9,3 +9,5 @@ dist/
 *.spec
 *.log
 *.db
+checkpoints/
+scarlet_narration_log.csv
