@@ -2,7 +2,7 @@
 
 
 
-A year in the making, \*\*Scarlet\*\* is a Python‑based reinforcement‑learning market analysis and automated‑trading engine designed for experimentation, offline training, and real‑time market evaluation. She includes a full market‑data engineering pipeline, a custom indicator system, GPU‑accelerated training, and a modular architecture built for research and future automated‑trading extensions.
+*See ROADMAP.md for long term plans* A year in the making, \*\*Scarlet\*\* is a Python‑based reinforcement‑learning market analysis and automated‑trading engine designed for experimentation, offline training, and real‑time market evaluation. She includes a full market‑data engineering pipeline, a custom indicator system, GPU‑accelerated training, and a modular architecture built for research and future automated‑trading extensions.
 
 
 
