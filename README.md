@@ -1,143 +1,224 @@
-Scarlet — Reinforcement‑Learning Market Engine
+\# \*\*Scarlet — Reinforcement‑Learning Market Engine\*\*
 
-A year in the making, Scarlet is a Python‑based reinforcement‑learning based market analysis/automated trading engine designed for experimentation, offline training, and real‑time market evaluation(and automated trading if you really want to enable it the toggle is at the top of scarlet_core.py). She includes a full market‑data engineering pipeline, a custom indicator system, GPU‑accelerated training, and a modular architecture built for research and future automated‑trading extensions. Automated trading is disabled by default for safety. It uses Gemini crypto exchange.
 
 
+A year in the making, \*\*Scarlet\*\* is a Python‑based reinforcement‑learning market analysis and automated‑trading engine designed for experimentation, offline training, and real‑time market evaluation. She includes a full market‑data engineering pipeline, a custom indicator system, GPU‑accelerated training, and a modular architecture built for research and future automated‑trading extensions.
 
-Features
 
-\- Reinforcement‑learning training loop for offline experimentation
 
-\- GPU‑accelerated PyTorch pipeline (optimized for NVIDIA 5000‑series GPUs using CUDA 12.8 nightly wheels)
+Automated trading is \*\*disabled by default\*\* for safety.  
 
-\- Full market‑data engineering pipeline (fetching, cleaning, alignment, batching)
+If you truly want to enable it, the toggle is located at the top of `scarlet\_core.py`.
 
-\- Custom indicator engine: RSI, MACD, ATR, Bollinger Bands, VWAP, slopes, volume
 
-\- Multi‑window feature generation for RL state construction
 
-\- Normalization and scaling utilities for stable model training
+Scarlet currently integrates with the \*\*Gemini\*\* crypto exchange for live data and execution.
 
-\- Modular architecture for rapid experimentation
 
-\- Clean separation between offline training and live evaluation
 
+---
 
 
 
-&nbsp;                          ┌──────────────────────────┐
+\# \*\*Features\*\*
 
-&nbsp;                          │      Market Feeds        │
 
-&nbsp;                          │  (Crypto, OHLCV, APIs)   │
 
-&nbsp;                          └────────────┬─────────────┘
+\### \*\*Reinforcement Learning\*\*
 
-&nbsp;                                       │
+\- Offline RL training loop  
 
-&nbsp;                                       ▼
+\- Policy + value networks (PyTorch)  
 
-&nbsp;                        ┌──────────────────────────────┐
+\- Replay buffer  
 
-&nbsp;                        │   Data Engineering Pipeline   │
+\- Custom loss functions and optimizers  
 
-&nbsp;                        │  - Fetching / Cleaning        │
+\- GPU‑accelerated training (CUDA 12.8, optimized for NVIDIA 5000‑series GPUs)
 
-&nbsp;                        │  - Alignment / Resampling     │
 
-&nbsp;                        │  - Windowing / Batching       │
 
-&nbsp;                        └────────────┬──────────────────┘
+\### \*\*Market‑Data Engineering Pipeline\*\*
 
-&nbsp;                                     │
+\- High‑resolution OHLCV ingestion  
 
-&nbsp;                                     ▼
+\- Cleaning, alignment, resampling  
 
-&nbsp;                    ┌────────────────────────────────────┐
+\- Windowing and batching  
 
-&nbsp;                    │      Indicator Engine (Custom)      │
+\- Multi‑window feature generation for RL state construction  
 
-&nbsp;                    │  RSI • MACD • ATR • Bollinger       │
+\- Normalization and scaling utilities for stable training
 
-&nbsp;                    │  VWAP • Slopes • Volume • Regimes
-                              Sentiment│
 
-&nbsp;                    └──────────────────┬──────────────────┘
 
-&nbsp;                                       │
+\### \*\*Custom Indicator Engine\*\*
 
-&nbsp;                                       ▼
+\- RSI  
 
-&nbsp;                    ┌────────────────────────────────────┐
+\- MACD  
 
-&nbsp;                    │   Feature Constructor (Multi‑Win)   │
+\- ATR  
 
-&nbsp;                    │  - State Assembly for RL Agent      │
+\- Bollinger Bands  
 
-&nbsp;                    │  - Normalization / Scaling          │
+\- VWAP  
 
-&nbsp;                    └──────────────────┬──────────────────┘
+\- Multi‑horizon slopes  
 
-&nbsp;                                       │
+\- Volume  
 
-&nbsp;                                       ▼
+\- Regime and sentiment hooks (extensible)
 
-&nbsp;                ┌────────────────────────────────────────────┐
 
-&nbsp;                │         Reinforcement‑Learning Core         │
 
-&nbsp;                │  - Policy Network (PyTorch)                 │
+\### \*\*Architecture\*\*
 
-&nbsp;                │  - Value Network                            │
+\- Modular, research‑friendly design  
 
-&nbsp;                │  - Replay Buffer                            │
+\- Clear separation between:
 
-&nbsp;                │  - Loss Functions / Optimizers              │
+&nbsp; - Offline training  
 
-&nbsp;                └──────────────────┬──────────────────────────┘
+&nbsp; - Live evaluation  
 
-&nbsp;                                   │
+&nbsp; - Optional automated trading  
 
-&nbsp;                                   ▼
+\- Narratable, interpretable RL posture system  
 
-&nbsp;                ┌────────────────────────────────────────────┐
+\- Built for long‑term experimentation and safe iteration
 
-&nbsp;                │            Training Subsystem               │
 
-&nbsp;                │  - GPU Acceleration (CUDA 12.8)             │
 
-&nbsp;                │  - Offline Training Loop                    │
+---
 
-&nbsp;                │  - Checkpointing / Logging                 │
 
-&nbsp;                └──────────────────┬──────────────────────────┘
 
-&nbsp;                                   │
+\# \*\*System Architecture\*\*
 
-&nbsp;                                   ▼
 
-&nbsp;                ┌────────────────────────────────────────────┐
 
-&nbsp;                │           Live Evaluation Engine            │
+```
 
-&nbsp;                │  - Real‑Time Feature Updates                │
+&nbsp;                         ┌──────────────────────────┐
 
-&nbsp;                │  - Policy Inference                        │
+&nbsp;                         │      Market Feeds        │
 
-&nbsp;                │  - Narration / Logging                     │
+&nbsp;                         │  (Crypto, OHLCV, APIs)   │
 
-&nbsp;                │  - Safety Layer (Auto Trading disabled by default)          │
+&nbsp;                         └────────────┬─────────────┘
 
-&nbsp;                └────────────────────────────────────────────┘
+&nbsp;                                      │
 
+&nbsp;                                      ▼
 
+&nbsp;                       ┌──────────────────────────────┐
 
+&nbsp;                       │   Data Engineering Pipeline   │
 
-Environment Setup (scarlet\_gemini)
+&nbsp;                       │  - Fetching / Cleaning        │
 
+&nbsp;                       │  - Alignment / Resampling     │
 
+&nbsp;                       │  - Windowing / Batching       │
 
-cd D:\\Scarlet\_Works\\Scarlet (or to whatever folder you have it stored in)
+&nbsp;                       └────────────┬──────────────────┘
+
+&nbsp;                                    │
+
+&nbsp;                                    ▼
+
+&nbsp;                   ┌────────────────────────────────────┐
+
+&nbsp;                   │      Indicator Engine (Custom)      │
+
+&nbsp;                   │  RSI • MACD • ATR • Bollinger       │
+
+&nbsp;                   │  VWAP • Slopes • Volume • Regimes   │
+
+&nbsp;                   └──────────────────┬──────────────────┘
+
+&nbsp;                                      │
+
+&nbsp;                                      ▼
+
+&nbsp;                   ┌────────────────────────────────────┐
+
+&nbsp;                   │   Feature Constructor (Multi‑Win)   │
+
+&nbsp;                   │  - State Assembly for RL Agent      │
+
+&nbsp;                   │  - Normalization / Scaling          │
+
+&nbsp;                   └──────────────────┬──────────────────┘
+
+&nbsp;                                      │
+
+&nbsp;                                      ▼
+
+&nbsp;               ┌────────────────────────────────────────────┐
+
+&nbsp;               │         Reinforcement‑Learning Core         │
+
+&nbsp;               │  - Policy Network (PyTorch)                 │
+
+&nbsp;               │  - Value Network                            │
+
+&nbsp;               │  - Replay Buffer                            │
+
+&nbsp;               │  - Loss Functions / Optimizers              │
+
+&nbsp;               └──────────────────┬──────────────────────────┘
+
+&nbsp;                                  │
+
+&nbsp;                                  ▼
+
+&nbsp;               ┌────────────────────────────────────────────┐
+
+&nbsp;               │            Training Subsystem               │
+
+&nbsp;               │  - GPU Acceleration (CUDA 12.8)             │
+
+&nbsp;               │  - Offline Training Loop                    │
+
+&nbsp;               │  - Checkpointing / Logging                  │
+
+&nbsp;               └──────────────────┬──────────────────────────┘
+
+&nbsp;                                  │
+
+&nbsp;                                  ▼
+
+&nbsp;               ┌────────────────────────────────────────────┐
+
+&nbsp;               │           Live Evaluation Engine            │
+
+&nbsp;               │  - Real‑Time Feature Updates                │
+
+&nbsp;               │  - Policy Inference                         │
+
+&nbsp;               │  - Narration / Logging                      │
+
+&nbsp;               │  - Safety Layer (Auto‑Trading Off by Default) │
+
+&nbsp;               └────────────────────────────────────────────┘
+
+```
+
+
+
+---
+
+
+
+\# \*\*Environment Setup (`scarlet\_gemini`)\*\*
+
+
+
+```
+
+cd D:\\Scarlet\_Works\\Scarlet
 
 pip install --pre torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
 
@@ -145,47 +226,73 @@ pip install --pre torchvision --index-url https://download.pytorch.org/whl/night
 
 pip install -r requirements.txt
 
+```
 
 
 
-
-Running Scarlet
-
-Anaconda Prompt (recommended)
+---
 
 
 
-conda activate scarlet\_gemini (replace file path to the folder you have Scarlet in)
+\# \*\*Running Scarlet\*\*
+
+
+
+\### \*\*Anaconda Prompt (recommended)\*\*
+
+
+
+```
+
+conda activate scarlet\_gemini
 
 D:
 
 cd D:\\Scarlet\_Works\\Scarlet
 
+```
 
 
-Offline Trainer
+
+\*\*Offline Trainer\*\*
+
+
+
+```
 
 python Scarlet\_Trainer.py
 
+```
 
 
-Main Live Loop
+
+\*\*Main Live Loop\*\*
+
+
+
+```
 
 python Scarlet\_Core.py
 
+```
 
 
 
+---
 
 
 
-Running Scarlet in CMD
+\### \*\*Running Scarlet in CMD\*\*
 
 
 
-Trainer
+\*\*Trainer\*\*
 
-call conda activate scarlet\_gemini (replace file path to the folder you have Scarlet in)
+
+
+```
+
+call conda activate scarlet\_gemini
 
 D:
 
@@ -193,13 +300,17 @@ cd D:\\Scarlet\_Works\\Scarlet
 
 python Scarlet\_Trainer.py
 
+```
 
 
 
+\*\*Main Loop\*\*
 
-Main Loop
 
-call conda activate scarlet\_gemini (replace file path to the folder you have Scarlet in)
+
+```
+
+call conda activate scarlet\_gemini
 
 D:
 
@@ -207,49 +318,113 @@ cd D:\\Scarlet\_Works\\Scarlet
 
 python Scarlet\_Core.py
 
+```
 
 
 
-
-Notes
-
-\- Automated trading is disabled by default for safety.
-
-\- Scarlet currently spawns multiple loops on startup; all but one exit after the first time.sleep(). This is a known issue under investigation.
+---
 
 
 
-Why Scarlet Exists
+\# \*\*Notes\*\*
 
-Modern market‑analysis tools fall into two extremes:
+\- Automated trading is disabled by default for safety.  
 
-\- Black‑box trading bots that hide their logic, can’t be trusted, and often fail silently.
+\- Scarlet currently spawns multiple loops on startup; all but one exit after the first `time.sleep(16)`. This is a known issue under investigation.
 
-\- Academic RL research code that is powerful but unusable for real markets without massive engineering effort.
 
-There is almost nothing in the middle: a transparent, narratable, research‑grade RL engine that can run on real market data, explain its reasoning, and remain safe by design.
+
+---
+
+
+
+\# \*\*Why Scarlet Exists\*\*
+
+
+
+Modern market‑analysis tools tend to fall into two extremes:
+
+
+
+\- \*\*Black‑box trading bots\*\* that hide their logic, can’t be trusted, and often fail silently.  
+
+\- \*\*Academic RL research code\*\* that is powerful but unusable for real markets without massive engineering effort.
+
+
+
+There is almost nothing in the middle — a transparent, narratable, research‑grade RL engine that can run on real market data, explain its reasoning, and remain safe by design.
+
+
 
 Scarlet fills that gap.
 
+
+
 She was built to be:
 
-\- A research platform for experimenting with reinforcement learning on real market structure
-
-\- A transparent system that narrates its decisions instead of hiding them
-
-\- A safe environment where automated trading is disabled by default
-
-\- A modular engine that can evolve into more advanced agents without rewriting the core
-
-\- A personal laboratory for exploring indicators, feature engineering, and RL architectures
-
-Scarlet is not a bot.
-
-She is a market‑reasoning engine — a place to study, test, and refine ideas safely.
-
-Ultimately the goal is to add other types of predictions, not just crypto. I have always believed we live too reactively. We need a way to see one step ahead rather than looking at our current footprint.
 
 
+\- A research platform for experimenting with reinforcement learning on real market structure  
+
+\- A transparent system that narrates its decisions instead of hiding them  
+
+\- A safe environment where automated trading is disabled by default  
+
+\- A modular engine that can evolve into more advanced agents without rewriting the core  
+
+\- A personal laboratory for exploring indicators, feature engineering, and RL architectures  
+
+
+
+Scarlet is not a bot.  
+
+She is a \*\*market‑reasoning engine\*\* — a place to study, test, and refine ideas safely.
+
+
+
+Ultimately, the goal is to expand beyond crypto.  
+
+We live too reactively; Scarlet is a step toward seeing one move ahead instead of staring at our current footprint.
+
+
+
+---
+
+
+
+\# \*\*Professional Setup Assistance\*\*
+
+
+
+Scarlet is open‑source and free to use.  
+
+If you need help installing, configuring, or extending Scarlet, I offer professional support at:
+
+
+
+\### \*\*$150/hr\*\*
+
+
+
+This includes:
+
+
+
+\- Environment setup (CUDA, PyTorch, GPU tuning)  
+
+\- Exchange integration  
+
+\- Custom indicator design  
+
+\- RL architecture tuning  
+
+\- Automated‑trading safety review  
+
+\- Debugging and performance optimization  
+
+
+
+---
 
 
 
