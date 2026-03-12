@@ -1,0 +1,21 @@
+close_idx: 3
+dropout: 0.15
+hidden_size: 128
+lr: 1.0e-05
+min_supervised_batches: 15
+narrator: !!python/object:__main__.Narrator
+  log_file: scarlet_narration_log.csv
+num_context_assets: 2
+num_layers: 2
+output_seq_len: 12
+price_dim: 36
+rl_weight_growth: 1.07
+rl_weight_max: 3.0
+rl_weight_start: 0.5
+sched_sampling_decay: 0.992
+sched_sampling_end: 0.05
+sched_sampling_start: 0.3
+supervised_batches_per_epoch: 40
+supervised_decay: 0.97
+supervised_ratio: 0.2
+use_gradient_checkpointing: true

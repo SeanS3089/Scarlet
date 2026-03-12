@@ -1,88 +1,11 @@
-# ============================
-#  SECRETS & ENVIRONMENT
-# ============================
-.env
-*.env
-*.key
-*.secret
-
-# ============================
-#  IDE / EDITOR
-# ============================
-.vs/
-.vscode/
-.idea/
-
-# ============================
-#  PYTHON CACHE
-# ============================
 __pycache__/
-.ipynb_checkpoints/
 *.pyc
 *.pyo
 *.pyd
-
-# ============================
-#  SCARLET RUNTIME FILES
-# ============================
-scarlet_memory.csv
-scarlet_narration_log.csv
-scarlet_encouragement_log.csv
-scarlet_passive_learning.py
-scarlet_config.py
-scarlet_state.json
-scarlet_posture.json
-scarlet_identity.json
-
-sentiment_history.csv
-sentiment_cache.json
-
-online_step.txt
-last_nonce.txt
-nonce_debug.log
-
-reward_trace.csv
-cost_basis.csv
-volatility_history.csv
-
-candle_cache_*.csv
-crypto_data.csv
-
-# ============================
-#  SCARLET CODE FILES (HIDE)
-# ============================
-# If you want Scarlet's internal engine to be private:
-Scarlet_Core.py
-Scarlet_Tactics.py
-Scarlet_Trainer.py
-scarlet_memory.csv
-hybrid_forecaster/
-utils_io/
-gemini_time_utils.py
-hotkeys.py
-
-# ============================
-#  TRAINING ARTIFACTS
-# ============================
-checkpoints/
-runs/
-lightning_logs/
-*.ckpt
-*.pt
-*.pth
-
-# ============================
-#  DATA SNAPSHOTS
-# ============================
-*.csv
-*.json
-*.parquet
-*.feather
-
-# ============================
-#  LOGS
-# ============================
+.env
+venv/
+build/
+dist/
+*.spec
 *.log
-logs/
-debug/
-To run Scarlet.txt
+*.db

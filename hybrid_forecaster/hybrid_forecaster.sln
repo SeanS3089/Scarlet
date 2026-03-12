@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.13.35931.197 d17.13
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "hybrid_forecaster", "hybrid_forecaster.pyproj", "{B6F08D77-36AD-4B3A-8892-BA836570E4BE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B6F08D77-36AD-4B3A-8892-BA836570E4BE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B6F08D77-36AD-4B3A-8892-BA836570E4BE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C30DEA12-1F2D-4E02-88C0-B4CF964BD93D}
+	EndGlobalSection
+EndGlobal
