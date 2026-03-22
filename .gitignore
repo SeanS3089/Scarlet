@@ -84,3 +84,16 @@ lightning_logs/
 *.log
 logs/
 debug/
+# ============================================
+# ADDITIONAL FILES TO HIDE
+# ============================================
+
+gemini_time_utils.py
+hotkeys.py
+scarlet_config.py
+env_snapshot.py
+To run Scarlet.txt
+
+utils_io/
+.vs/
+.ipynb_checkpoints/
