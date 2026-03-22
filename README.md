@@ -396,13 +396,13 @@ We live too reactively; Scarlet is a step toward seeing one move ahead instead o
 
 
 
-Scarlet is open‑source and free to use.  
+Scarlet is expensive. Inquire for pricing.
 
 If you need help installing, configuring, or extending Scarlet, I offer professional support at:
 
 
 
-\### \*\*$150/hr\*\*
+\### \*\*$250/hr\*\*
 
 
 
