@@ -402,7 +402,7 @@ If you need help installing, configuring, or extending Scarlet, I offer professi
 
 
 
-\### \*\*$250/hr\*\*
+$250/hr
 
 
 
