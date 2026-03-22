@@ -1,0 +1,143 @@
+Scarlet Roadmap
+
+This roadmap outlines Scarlet’s long‑horizon research trajectory — from raw data accumulation to advanced sentiment‑event inference. Each phase builds on the stability, interpretability, and narratability that define Scarlet’s architecture.
+
+1. Accumulate Market Data for Offline Training (≈ 4 more Months)
+
+Scarlet requires a deep, multi‑regime historical dataset to train a stable, interpretable forecasting model.
+
+Goals
+
+Collect multi‑asset OHLCV data across diverse market conditions.
+
+Maintain schema consistency and provenance tracking.
+
+Build a clean, corruption‑safe offline dataset.
+
+Enable long‑horizon training cycles without drift.
+
+2. Verify Ability to Trade Profitably
+
+Scarlet must demonstrate that her forecasting engine can support profitable, posture‑safe trading.
+
+Goals
+
+Validate that Scarlet can pay for her own continued development.
+
+Confirm that volatility‑aware posture logic behaves safely.
+
+Evaluate suppression logic, cooldowns, and confidence scaling.
+
+Ensure narratable reasoning aligns with actual trade outcomes.
+
+3. Analyze Prediction Accuracy Over Time
+
+As Scarlet’s dataset grows, her forecasting accuracy and stability should improve.
+
+Goals
+
+Track accuracy across rolling windows.
+
+Compare early‑dataset vs. late‑dataset performance.
+
+Identify regime‑specific strengths and weaknesses.
+
+Validate that Scarlet’s emotional‑memory slopes correlate with prediction quality.
+
+4. Branch Scarlet for Feature Expansion
+
+If Scarlet succeeds in Steps 1–3, development splits into two synchronized branches:
+
+Branch A — Trading Scarlet
+
+Continues running the proven trading model.
+
+Maintains stable, profitable posture logic.
+
+Receives only safety and reliability updates.
+
+Branch B — Research Scarlet
+
+Accepts expanded feature inputs.
+
+Integrates richer sentiment, social, and structural signals.
+
+Experiments with new forecasting architectures.
+
+Vision
+
+If sentiment influences crypto, and crypto can be predicted, then sentiment can be reverse‑engineered from price behavior.
+
+This enables Scarlet to detect major sentiment shifts before they appear in social data — a powerful early‑warning system for major events.
+
+5. Predict the Type of Event Behind Sentiment Shifts
+
+Once Scarlet can detect sentiment shocks, the next step is understanding their origin.
+
+Goals
+
+Expand Scarlet’s automated dataset pipeline.
+
+Integrate structured and unstructured external signals.
+
+Build classifiers that map predicted sentiment shifts to likely event categories.
+
+Examples
+
+Regulatory announcements
+
+Exchange outages
+
+Security breaches
+
+Macro‑economic shocks
+
+Social‑media‑driven cascades
+
+Scarlet evolves from a market forecaster into an event‑anticipation engine.
+
+6. Future Milestones (To Be Explored)
+
+Scarlet’s long‑term evolution may include:
+
+6.1 Multi‑Agent Coordination
+
+Multiple Scarlet instances specializing in different assets.
+
+Cross‑asset reasoning and shared emotional memory.
+
+6.2 Real‑Time Event Narration
+
+Scarlet explains not only what she predicts, but why.
+
+Natural‑language summaries of expected market behavior.
+
+6.3 Autonomous Research Cycles
+
+Scarlet proposes new features.
+
+Scarlet evaluates her own performance.
+
+Scarlet schedules her own retraining cycles.
+
+6.4 Market‑Structure Awareness
+
+Order‑flow features.
+
+Liquidity regime detection.
+
+Microstructure‑aware volatility modeling.
+
+6.5 Long‑Horizon Macro Forecasting
+
+Detecting structural shifts in crypto ecosystems.
+
+Predicting multi‑month sentiment cycles.
+
+Closing Vision
+
+Scarlet’s roadmap is designed to evolve her from:
+
+A narratable trading agent → a predictive research engine → an event‑anticipation intelligence.
+
+Each step builds on the last, ensuring Scarlet remains interpretable, stable, and aligned with her core design philosophy: clarity, safety, and insight.

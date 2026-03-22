@@ -1,13 +1,86 @@
+# ============================================
+# PYTHON BUILD / CACHE
+# ============================================
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.pyd
+*.pdb
+*.egg-info/
+*.spec
+
+# ============================================
+# ENVIRONMENTS
+# ============================================
 .env
+*.env
 venv/
+.venv/
+
+# ============================================
+# BUILD / DIST
+# ============================================
 build/
 dist/
-*.spec
+output/
+installer/
 *.log
+
+# ============================================
+# DATABASE / STATE
+# ============================================
 *.db
-checkpoints/
+*.sqlite
+*.sqlite3
+
+# ============================================
+# SCARLET RUNTIME FILES
+# ============================================
 scarlet_narration_log.csv
+scarlet_memory.csv
+scarlet_encouragement_log.csv
+sentiment_history.csv
+sentiment_cache.json
+reward_trace.csv
+online_step.txt
+last_nonce.txt
+nonce_debug.log
+candle_cache_*.csv
+crypto_data.csv
+
+# ============================================
+# SCARLET INTERNAL CODE (HIDE ALL)
+# ============================================
+Scarlet_Core.py
+Scarlet_Tactics.py
+Scarlet_Trainer.py
+scarlet_policy_config.py
+scarlet_passive_learning.py
+scarlet_state.json
+scarlet_identity.json
+scarlet_posture.json
+utils/
+hybrid_forecaster/
+models/
+checkpoints/
+runs/
+lightning_logs/
+*.ckpt
+*.pt
+*.pth
+
+# ============================================
+# DATA SNAPSHOTS
+# ============================================
+*.csv
+*.json
+*.parquet
+*.feather
+
+# ============================================
+# LOGS
+# ============================================
+*.log
+logs/
+debug/
