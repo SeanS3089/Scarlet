@@ -6,7 +6,42 @@ Each version reflects architectural, interpretability, and emotional‑memory mi
 
 This project uses **Semantic Versioning** and the **Keep a Changelog** format.
 
----
+
+# 1.6.1
+### Horizon‑Aligned Forecast Collapse & Fee‑Adjusted Policy Logic (2026‑03‑22)
+## Major Improvements
+- Updated policy delta collapse to match real trading cadence
+Scarlet now collapses her 6‑step forecast vector using a weighted blend centered on the correct horizon for her 61‑minute cycle.
+- New weights: [0, 0, 0.1, 0.6, 0.2, 0.1]
+- Emphasizes step 4 (~60 minutes)
+- Preserves multi‑horizon curvature
+This ensures her policy delta reflects the candle she will actually trade on.
+- Adjusted policy thresholds to account for increased trading fees
+The delta scale was already correct — the update ensures Scarlet’s BUY/SELL gating logic respects the higher round‑trip fee environment without suppressing trades.
+This keeps her behavior realistic and fee‑aware while maintaining sensitivity to micro‑deltas.
+## Drift Detection Alignment
+- Drift detection now uses the same horizon‑collapsed forecast as policy
+Previously, drift compared Δ1 (15m) predictions to 61‑minute actual deltas, inflating drift and triggering unnecessary micro‑training.
+Drift now uses the same weighted horizon‑4 collapse as the policy layer, ensuring:
+- Correct temporal alignment
+- Honest drift magnitude
+- Stable online learning
+- Fewer false positives
+## Internal Logic Refinements
+- Reordered drift block so forecast collapse occurs before drift computation.
+- Ensured pred_deltas always reflect the horizon‑aligned forecast.
+- Cleaned up per‑asset forecast vector extraction for consistency.
+## Result
+Scarlet now operates with fully aligned temporal geometry and fee‑aware policy logic:
+- Forecast horizon
+- Actual delta horizon
+- Drift horizon
+- Policy horizon
+…all match the real‑world 61‑minute cycle (previously 16) and the updated higher fee environment.
+This release significantly improves stability, coherence, and trading realism when faced with a high fee environment and low trading budget.
+This effectively makes Scarlet a swing trader rather than a scalper.
+
+
 
 ## [1.6.0] – 2026‑02-28
 ### Added
