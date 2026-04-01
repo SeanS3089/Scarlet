@@ -6,6 +6,27 @@ Each version reflects architectural, interpretability, and emotional‑memory mi
 
 This project uses **Semantic Versioning** and the **Keep a Changelog** format.
 
+## [1.6.2] – 2026‑03‑31
+### Added
+- Integrated full deep-history datasets for SOL, ETH, and BTC, each exceeding **100,000+ rows**.
+- Enabled Scarlet to operate on long-horizon, multi-asset feature tensors without degrading performance.
+- Added automatic LSTM windowing to support arbitrarily large datasets while preserving temporal fidelity.
+
+### Fixed
+- Resolved a critical cuDNN crash caused by feeding the LSTM full 100k‑step sequences.
+  - Implemented a capped LSTM context window (configurable) to ensure GPU stability.
+  - Ensured all LSTM inputs are contiguous and device‑aligned.
+- Removed legacy double‑LSTM invocation that previously caused redundant compute and instability under large inputs.
+- Eliminated timestamp contamination in the inference pipeline that surfaced once the LSTM crash was fixed.
+
+### Improved
+- Strengthened the feature pipeline to guarantee numeric‑only tensors and consistent schema across training, inference, and online RL.
+- Improved runtime stability when operating with large multi‑asset buffers and long historical windows.
+- Enhanced logging around feature counts, alignment, and tensor construction for easier debugging at scale.
+
+### Notes
+- This update marks Scarlet’s first fully stable run on **100k+ candle datasets** with live inference, transformer blocks, decoder, policy head, and online RL all active simultaneously.
+- No changes were made to Scarlet’s forecasting logic; this release focuses on stability, scalability, and data‑pipeline integrity.
 
 # 1.6.1
 ### Horizon‑Aligned Forecast Collapse & Fee‑Adjusted Policy Logic (2026‑03‑22)
