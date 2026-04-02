@@ -7,7 +7,7 @@ Each version reflects architectural, interpretability, and emotional‑memory mi
 This project uses **Semantic Versioning** and the **Keep a Changelog** format.
 
 ## [1.6.3] – 2026‑04‑01
-Added
+### Added
 - Introduced a dual‑schema architecture separating Scarlet’s runtime feature set (78 features) from the new Data Pack schema (57 features).
 - Runtime retains full sentiment‑aware intelligence.
 - Data Packs now use a clean, deterministic, price‑action‑only feature set.
@@ -17,25 +17,24 @@ Added
 - Added per‑asset Data Pack generation, producing one ZIP archive per asset.
 - Each pack includes all cadences (1m, 5m, 15m, 30m, 1h, 4h, 1d).
 - Each pack includes a metadata manifest with row counts, feature count, and generation timestamp.
-Changed
+### Changed
 - Refactored the Data Pack builder to remove multi‑asset alignment and merged‑cadence outputs.
 - Each asset is now fully isolated and packaged independently.
 - Updated the Data Pack pipeline to use the new sentiment‑free schema, reducing feature count from 78 → 57.
 - Cleaned and simplified directory structure for Data Pack output.
 - Removed aligned/ and features/ directories.
 - Output now follows a clean, commercial‑grade layout.
-- Updated cache path resolution to use the correct provider directory:
-D:\Scarlet_Works\Scarlet\data_providers\cache.
-Removed
+
+### Removed
 - Removed all Reddit sentiment and sentiment‑slope features from Data Pack generation.
 - Eliminates external API dependencies.
 - Ensures reproducibility and universal compatibility.
 - Removed unused imports and legacy builder logic tied to multi‑asset merging.
-Improved
+### Improved
 - Improved maintainability and clarity of the Data Pack pipeline through explicit schema separation.
 - Enhanced product readiness by aligning Data Pack structure with marketplace expectations (Etsy, Gumroad, Kaggle).
 - Strengthened long‑term scalability by isolating Scarlet’s runtime intelligence from sellable datasets.
-Notes
+### Notes
 - Scarlet’s runtime remains fully sentiment‑aware and continues using the complete 78‑feature schema for inference, training, and narrative reasoning.
 - Data Packs now represent a clean, deterministic, price‑action‑only dataset tier, suitable for researchers, quants, and commercial distribution.
 - This release establishes the foundation for future product tiers, including a potential Sentiment Edition Data Pack.
