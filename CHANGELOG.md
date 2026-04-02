@@ -6,6 +6,44 @@ Each version reflects architectural, interpretability, and emotional‑memory mi
 
 This project uses **Semantic Versioning** and the **Keep a Changelog** format.
 
+## [1.6.4] – 2026‑04‑02
+## Added
+- Introduced a fully offline training pipeline powered by Parquet‑based dataset loading.
+- Offline mode now bypasses all live backfill, alignment, and feature‑engineering steps.
+- Added make_offline_dataloader() for deterministic, high‑throughput training.
+- Added a timestamp‑clamping safety layer to Binance fetch logic.
+- Prevents future‑window requests.
+- Eliminates 400‑error failures for symbols already up‑to‑date.
+- Added explicit debug markers to confirm offline dataloader entry during development.
+## Changed
+- Migrated offline dataset storage from unsafe .pt serialization to Parquet, ensuring compatibility with PyTorch 2.6+ and eliminating unpickling failures.
+- Refactored fetch_binance() to enforce strict backward‑only historical walking.
+- end_ms is now clamped to real‑time.
+- start_ms >= now_ms returns an empty frame immediately.
+- Updated backfill_binance() to operate cleanly with the new fetch‑time clamping logic.
+- Reworked DataLoader configuration to support both single‑process debugging and multi‑worker high‑throughput modes.
+## Removed
+- Removed all top‑level executable code from Scarlet_Core.py that previously triggered:
+- repeated backfills
+- repeated alignment
+- PID spam
+- recursive import loops
+- Removed legacy .pt dataset paths and unused offline‑generation code.
+- Removed accidental debug prints (policy config, urlparse test, PID banners) from import scope.
+## Improved
+- Achieved a 160× performance improvement in offline training throughput:
+- from 3.7 seconds/iteration → 44 iterations/second
+- CPU utilization now correctly saturates during batch assembly
+- GPU is fed continuously without starvation
+- Stabilized DataLoader behavior by disabling multiprocessing during debugging and re‑enabling it safely after cleanup.
+- Greatly improved maintainability by ensuring Scarlet_Core imports are now side‑effect‑free.
+- Strengthened the reliability of Binance backfills across all supported symbols and intervals.
+## Notes
+- Scarlet’s offline mode is now a pure tensor‑slicing engine, free of pandas overhead and live‑data dependencies.
+- The new timestamp‑clamping logic ensures that Scarlet never requests candles beyond the current real‑time boundary, even when server clocks or proxies drift.
+- This release establishes the foundation for high‑throughput, GPU‑efficient training, enabling future model scaling, larger batch sizes, and more complex architectures.
+
+
 ## [1.6.3] – 2026‑04‑01
 ### Added
 - Introduced a dual‑schema architecture separating Scarlet’s runtime feature set (78 features) from the new Data Pack schema (57 features).
