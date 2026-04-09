@@ -9,7 +9,7 @@ import torch.utils.checkpoint as checkpoint
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-import bitsandbytes as bnb
+bnb = None
 from decimal import Decimal
 
 import torch
@@ -185,6 +185,8 @@ class BlockSparseAttention(nn.Module):
         return mask
 
     def forward(self, x):
+        x = x.contiguous()
+
         """
         x: [batch, seq_len, embed_dim]
         """
@@ -228,6 +230,8 @@ class TransformerBlock(nn.Module):
         )
 
     def forward(self, x):
+        x = x.contiguous()
+
 
         attn_in = self.norm1(x)
         attn_out = self.attn(attn_in)
@@ -753,21 +757,35 @@ class HybridForecasterD(pl.LightningModule):
         """
         Produces: [B, num_assets, 3]  (price, delta, strength)
         """
-        MAX_DELTA = 0.02  
+        MAX_DELTA = 0.02
+
+        # Always start with a contiguous input
+        x = x.contiguous()
 
         B, T, _ = x.shape
 
-        price_input = x[..., :self.price_dim]
+        # --- PRICE LSTM ENCODER ---
+        # Limit how much history the LSTM sees (e.g., last 2048 steps)
+        max_lstm_len = 2048
+        seq_len = min(T, max_lstm_len)
+
+        price_input = x[:, -seq_len:, :self.price_dim].contiguous()
+
+
+        
+
 
         if self.training and self.use_gradient_checkpointing:
             def lstm_forward(inp):
                 out, _ = self.price_lstm(inp)
                 return out
+
             enc_out = checkpoint.checkpoint(lstm_forward, price_input, use_reentrant=False)
             _, (h_price, _) = self.price_lstm(price_input)
         else:
             enc_out, (h_price, _) = self.price_lstm(price_input)
 
+        # --- TRANSFORMER BLOCKS ---
         if self.training and self.use_gradient_checkpointing:
             enc_out.requires_grad_(True)
             for block in self.transformer_blocks:
@@ -778,10 +796,13 @@ class HybridForecasterD(pl.LightningModule):
 
         enc_out = self.encoder_dropout(enc_out)
 
-        enc_summary = enc_out[:, -1, :] 
+        # --- SUMMARY VECTOR ---
+        enc_summary = enc_out[:, -1, :]
 
+        # --- DECODER ---
         features = self.feature_transform(enc_summary)
         features = self.output_dropout(features)
+
         dec_input = self.decoder_input_projection(x[:, -1, :]).unsqueeze(1)
         dec_input = self.decoder_dropout(dec_input)
 
@@ -790,39 +811,37 @@ class HybridForecasterD(pl.LightningModule):
         for _ in range(decode_steps):
             dec_out, dec_hidden = self.gru(dec_input, dec_hidden)
             dec_outputs.append(dec_out)
-
             dec_input = self.decoder_dropout(dec_out)
 
         dec_outputs = torch.cat(dec_outputs, dim=1)
 
+        # --- FUSION ---
         fused = dec_outputs[:, -1, :] + enc_summary
         fused = self.layer_norm(fused)
 
         fused_features = self.feature_transform(fused)
-
         fused_features = self.head_dropout(fused_features)
 
+        # --- CROSS-ASSET ATTENTION ---
         asset_feats = fused_features.unsqueeze(1) + self.asset_embeddings.unsqueeze(0)
         attn_out, _ = self.cross_asset_attention(asset_feats, asset_feats, asset_feats)
-        prices = self.price_head(attn_out).squeeze(-1)          
-        strengths = self.strength_head(attn_out).squeeze(-1)    
-        raw_deltas = self.delta_head(attn_out)                 
-        deltas = raw_deltas * MAX_DELTA                         
-        policy_logits = self.policy_head(attn_out)               
+
+        # --- HEADS ---
+        prices = self.price_head(attn_out).squeeze(-1)
+        strengths = self.strength_head(attn_out).squeeze(-1)
+        raw_deltas = self.delta_head(attn_out)
+        deltas = raw_deltas * MAX_DELTA
+
+        policy_logits = self.policy_head(attn_out)
         policy_probs = self.softmax(policy_logits)
 
-        output = {
-            "prices": prices,                             
-            "strengths": strengths,                           
-            "deltas": deltas,                                   
-            "forecast_deltas": {
-                "multi": deltas                                  
-            },
-            "policy_probs": policy_probs                         
+        return {
+            "prices": prices,
+            "strengths": strengths,
+            "deltas": deltas,
+            "forecast_deltas": {"multi": deltas},
+            "policy_probs": policy_probs,
         }
-
-        return output
-
 
     def forward_returns(self, x):
         """

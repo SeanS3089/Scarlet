@@ -1,9 +1,11 @@
 {
   "ExpandedNodes": [
     "",
+    "\\data_providers",
     "\\hybrid_forecaster",
+    "\\scarlet_datapack",
     "\\utils_io"
   ],
-  "SelectedNode": "\\Scarlet_Trainer.py",
+  "SelectedNode": "\\scarlet_datapack\\scarlet_datapack_builder.py",
   "PreviewInSolutionExplorer": false
 }

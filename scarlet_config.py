@@ -93,9 +93,9 @@ class ScarletPolicyConfig:
     })
 
     min_roi_for_sell: Dict[str, Decimal] = field(default_factory=lambda: {
-        "solusd": Decimal("0.0112"),
-        "ethusd": Decimal("0.0112"),
-        "btcusd": Decimal("0.0112"),
+        "solusd": Decimal("0.05"),
+        "ethusd": Decimal("0.05"),
+        "btcusd": Decimal("0.05"),
     })
 
     cooldown_cycles_after_loss: int = 4

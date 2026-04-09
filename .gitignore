@@ -1,13 +1,58 @@
+# --- Python ---
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.pdb
+*.pkl
+*.pickle
+
+# Virtual environments
 .env
+.venv
+env/
 venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# --- Build / Packaging ---
 build/
 dist/
 *.spec
+*.egg-info/
+*.egg
+*.whl
+# Ignore full datapack output
+scarlet_datapack/
+
+# Ignore all data providers (proprietary or external)
+data_providers/
+
+# --- Logs ---
 *.log
-*.db
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/
+
+# PyCharm
+.idea/
+
+# --- Data / Cache ---
+cache/
+data/
+datasets/
+*.csv
+*.json
+*.parquet
+.env*
+
+# --- Model Artifacts ---
 checkpoints/
-scarlet_narration_log.csv
+models/
+runs/
+tensorboard/

@@ -1,27 +1,85 @@
 conda activate scarlet_gemini
 
-D:
+cd C:\Scarlet_Works\Scarlet
 
-cd D:\Scarlet_Works\Scarlet
 
-## Offline Trainer:
 
 python Scarlet_Trainer.py
 
-## Main Live Loop
+
 
 python Scarlet_Core.py
 
 
 
-##Running Scarlet in CMD
 
-##Trainer:
 
-conda activate scarlet_gemini 
 
-D:
 
-cd D:\Scarlet_Works\Scarlet
+###############################
+To fetch Binance candles 
 
-python Scarlet_Trainer.py
+cd C:\Scarlet_Works\Scarlet\data_providers
+conda activate scarlet_gemini
+python binance_providers.py
+
+
+Hetzner password: Ckp4x4ecFjpH
+
+MAJOR_CRYPTOS = {
+    "btcusd": "BTCUSDT",
+    "ethusd": "ETHUSDT",
+    "solusd": "SOLUSDT",
+    "adausd": "ADAUSDT",
+    "avaxusd": "AVAXUSDT",
+}
+
+MAJOR_CRYPTOS = {
+    "dotusd": "DOTUSDT",
+    "linkusd": "LINKUSDT",
+    "ltcusd": "LTCUSDT",
+    "xrpusd": "XRPUSDT",
+    "xlmusd": "XLMUSDT",
+}
+
+MAJOR_CRYPTOS = {
+    "atomusd": "ATOMUSDT",
+    "bnbusd": "BNBUSDT",
+    "nearusd": "NEARUSDT",
+    "hbarusd": "HBARUSDT",
+}
+
+MAJOR_CRYPTOS = {
+    "injusd": "INJUSDT",
+    "qntusd": "QNTUSDT",
+    "grtusd": "GRTUSDT",
+    "galausd": "GALAUSDT",
+    "sandusd": "SANDUSDT",
+}
+
+MAJOR_CRYPTOS = {
+    "manausd": "MANAUSDT",
+    "vetusd": "VETUSDT",
+    "filusd": "FILUSDT",
+    "etcusd": "ETCUSDT",
+}
+
+MAJOR_CRYPTOS = {
+    "aaveusd": "AAVEUSDT",
+    "algousd": "ALGOUSDT",
+    "icpusd": "ICPUSDT",
+    "runeusd": "RUNEUSDT",
+}
+
+
+
+
+
+
+
+######################
+To build datapacks
+
+cd C:\Scarlet_Works\Scarlet
+conda activate scarlet_gemini
+python scarlet_datapack\scarlet_datapack_builder.py

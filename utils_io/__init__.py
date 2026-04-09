@@ -21,7 +21,7 @@ from datetime import datetime
 
 import importlib.util
 
-gemini_utils_path = r"D:\Scarlet_Works\Scarlet\gemini_time_utils.py"
+gemini_utils_path = r"C:\Scarlet_Works\Scarlet\gemini_time_utils.py"
 spec = importlib.util.spec_from_file_location("gemini_time_utils", gemini_utils_path)
 gemini_time_utils = importlib.util.module_from_spec(spec)
 sys.modules["gemini_time_utils"] = gemini_time_utils

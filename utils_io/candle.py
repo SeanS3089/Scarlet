@@ -9,110 +9,65 @@ OUTPUT_SEQ_LEN = 12
 np.random.seed(42)
 
 class CandleDatasetV2(Dataset):
-    def __init__(
-        self,
-        df,
-        INPUT_FEATURES,
-        output_features,
-        input_seq_len,
-        output_seq_len,
-        return_diff=False,
-        mode=None,
-    ):
-        self.df_raw = df.copy()
-        self.df = df.copy()
+    def __init__(self, df, INPUT_FEATURES, output_features,
+                 input_seq_len, output_seq_len, return_diff=False, mode=None):
 
-        for col in INPUT_FEATURES + output_features:
-            if self.df[col].dtype == object:
-                self.df[col] = pd.to_numeric(self.df[col], errors="coerce")
-            if self.df_raw[col].dtype == object:
-                self.df_raw[col] = pd.to_numeric(self.df_raw[col], errors="coerce")
+        # Convert entire DF to a single float32 tensor once
+        self.data = torch.tensor(df[INPUT_FEATURES].values, dtype=torch.float32)
+        self.raw = torch.tensor(df[output_features].values, dtype=torch.float32)
 
-        self.df = self.df.fillna(0.0)
-        self.df_raw = self.df_raw.fillna(0.0)
+        # Precompute shaping tensors (all rows)
+        self.current_price = torch.tensor(df[[
+            "close_solusd", "close_ethusd", "close_btcusd"
+        ]].values, dtype=torch.float32)
 
-        self.input_features = INPUT_FEATURES
-        self.output_features = output_features
+        self.atr = torch.tensor(df[[
+            "ATR_solusd", "ATR_ethusd", "ATR_btcusd"
+        ]].values, dtype=torch.float32)
+
+        self.vwap = torch.tensor(df[[
+            "VWAP_solusd", "VWAP_ethusd", "VWAP_btcusd"
+        ]].values, dtype=torch.float32)
+
+        self.macd_line = torch.tensor(df[[
+            "macd_line_solusd", "macd_line_ethusd", "macd_line_btcusd"
+        ]].values, dtype=torch.float32)
+
+        self.signal_line = torch.tensor(df[[
+            "signal_line_solusd", "signal_line_ethusd", "signal_line_btcusd"
+        ]].values, dtype=torch.float32)
+
+        self.slope = torch.tensor(df[[
+            "slope_10_solusd", "slope_10_ethusd", "slope_10_btcusd"
+        ]].values, dtype=torch.float32)
+
         self.input_seq_len = input_seq_len
         self.output_seq_len = output_seq_len
         self.return_diff = return_diff
-        self.external_mode = mode
 
     def __len__(self):
-        return max(0, len(self.df) - self.input_seq_len - self.output_seq_len)
+        return len(self.data) - self.input_seq_len - self.output_seq_len
 
     def __getitem__(self, idx):
-        if idx < 0 or idx >= len(self):
-            raise IndexError(f"Index {idx} out of bounds")
+        i0 = idx
+        i1 = idx + self.input_seq_len
+        i2 = i1 + self.output_seq_len
 
-        x = self.df[self.input_features].iloc[
-            idx : idx + self.input_seq_len
-        ].values.astype("float32")
+        # Fast tensor slicing
+        x = self.data[i0:i1]
 
-        now_row = self.df_raw[self.output_features].iloc[
-            idx + self.input_seq_len - 1
-        ].values.astype("float32")
-
-        future_row = self.df_raw[self.output_features].iloc[
-            idx + self.input_seq_len + self.output_seq_len - 1
-        ].values.astype("float32")
-
-        returns = (future_row - now_row) / (now_row + 1e-8)
-        y = returns.astype("float32")  
-
-        if self.return_diff:
-            x_diff = np.diff(x, axis=0)
-            x = np.vstack([np.zeros((1, x.shape[1])), x_diff])
-
-        last_row = self.df_raw.iloc[idx + self.input_seq_len - 1]
-
-        def safe(col):
-            return float(last_row[col]) if col in last_row else 0.0
+        now = self.raw[i1 - 1]
+        future = self.raw[i2 - 1]
+        y = (future - now) / (now + 1e-8)
 
         shaping = {
- 
-            "current_price_solusd": safe("close_solusd"),
-            "current_price_ethusd": safe("close_ethusd"),
-            "current_price_btcusd": safe("close_btcusd"),
-
-  
-            "ATR_solusd": safe("ATR_solusd"),
-            "ATR_ethusd": safe("ATR_ethusd"),
-            "ATR_btcusd": safe("ATR_btcusd"),
-
-   
-            "VWAP_solusd": safe("VWAP_solusd"),
-            "VWAP_ethusd": safe("VWAP_ethusd"),
-            "VWAP_btcusd": safe("VWAP_btcusd"),
-
-     
-            "macd_line_solusd": safe("macd_line_solusd"),
-            "macd_line_ethusd": safe("macd_line_ethusd"),
-            "macd_line_btcusd": safe("macd_line_btcusd"),
-
-
-            "signal_line_solusd": safe("signal_line_solusd"),
-            "signal_line_ethusd": safe("signal_line_ethusd"),
-            "signal_line_btcusd": safe("signal_line_btcusd"),
-
-       
-            "MACD_hist_solusd": safe("MACD_hist_solusd"),
-            "MACD_hist_ethusd": safe("MACD_hist_ethusd"),
-            "MACD_hist_btcusd": safe("MACD_hist_btcusd"),
-
-     
-            "slope_10_solusd": safe("slope_10_solusd"),
-            "slope_10_ethusd": safe("slope_10_ethusd"),
-            "slope_10_btcusd": safe("slope_10_btcusd"),
+            "current_price": self.current_price[i1 - 1],
+            "atr": self.atr[i1 - 1],
+            "vwap": self.vwap[i1 - 1],
+            "macd_line": self.macd_line[i1 - 1],
+            "signal_line": self.signal_line[i1 - 1],
+            "slope": self.slope[i1 - 1],
         }
 
-
-        
-
-        return {
-            "inputs": torch.tensor(x, dtype=torch.float32),  
-            "targets": torch.tensor(y, dtype=torch.float32),  
-            "shaping": shaping,
-        }
-   
+        return {"inputs": x, "targets": y, "shaping": shaping}   
 CandleDataset = CandleDatasetV2

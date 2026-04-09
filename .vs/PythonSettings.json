@@ -1,4 +1,4 @@
 {
   "TestFramework": "Pytest",
-  "Interpreter": "CondaEnv|CondaEnv|env1"
+  "Interpreter": "Scarlet_Gemini\\Scripts\\python.exe"
 }

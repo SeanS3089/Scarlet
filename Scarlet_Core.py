@@ -4,10 +4,16 @@ import torch
 import torch.nn as nn
 from hotkeys import setup_hotkeys, forced_signal
 import warnings 
-DISABLE_TRADING = True  # I really reccomend watching Scarlet run before enabling trading
-use_cpu_for_online = True  # I set up Scarlet to run online training on CPU as I like gaming too, this frees up the GPU
+DISABLE_TRADING = False  # I really reccomend watching Scarlet run before enabling trading
+use_cpu_for_online = False
+ONLINE_TRAINING_ENABLED = False
+# I set up Scarlet to run online training on CPU as I like gaming too, this frees up the GPU
 # Run a search for:   horizon_weights = Adjust for trading style
 # Search for:        buffer_usd = Decimal("40.50")  TO CHANGE WALLET RESERVE
+import threading
+import os
+print(">>> Scarlet_Core.py executed with PID:", os.getpid())
+
 
 import sys, os, msvcrt
 try:
@@ -30,8 +36,8 @@ from re import I
 from tabnanny import verbose
 import time
 
-memory_log_path = r"D:\Scarlet_Works\Scarlet\scarlet_memory.csv"
-memory_path = r"D:\Scarlet_Works\Scarlet\scarlet_memory.csv"
+memory_log_path = r"C:\Scarlet_Works\Scarlet\scarlet_memory.csv"
+memory_path = r"C:\Scarlet_Works\Scarlet\scarlet_memory.csv"
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -87,9 +93,9 @@ cooldown_cycles = {
     "btcusd": 0,
 }
 
-sys.path.append(r"D:\Scarlet_Works\Scarlet")
-sys.path.append(r"D:\Scarlet_Works\Scarlet")
-CACHE_DIR = r"D:\Scarlet_Works\Scarlet"
+sys.path.append(r"C:\Scarlet_Works\Scarlet")
+sys.path.append(r"C:\Scarlet_Works\Scarlet")
+CACHE_DIR = r"C:\Scarlet_Works\Scarlet"
 
 import joblib
 import traceback
@@ -198,6 +204,11 @@ INPUT_FEATURES = [
     "sentiment_slope_120_btcusd",
     "sentiment_slope_250_btcusd",
 ]
+INPUT_FEATURES_NO_SENTIMENT = [
+    f for f in INPUT_FEATURES
+    if not f.startswith("reddit_sentiment_")
+    and not f.startswith("sentiment_slope_")
+]
 
 
 
@@ -210,7 +221,7 @@ import requests
 import os
 
 from dotenv import load_dotenv
-load_dotenv("D:\Scarlet_Works\Scarlet\.env")  # Or set system environmental variables
+load_dotenv("C:\Scarlet_Works\Scarlet\.env")  # Or set system environmental variables
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 GEMINI_API_SECRET = os.environ["GEMINI_API_SECRET"].encode()
@@ -225,7 +236,7 @@ api_secret = os.environ["GEMINI_API_SECRET"].encode()
 key_name = os.environ["GEMINI_API_KEY"]
 key_secret = os.environ["GEMINI_API_SECRET"].encode()
 
-filepath = r"D:\Scarlet_Works\Scarlet\scarlet_memory.csv"
+filepath = r"C:\Scarlet_Works\Scarlet\scarlet_memory.csv"
 
 base_amount = 0.00000000001
 max_amount = 0.25
@@ -621,8 +632,8 @@ narrator = Narrator(log_path="scarlet_narration_log.csv")
 
 
 
-CSV_PATH = r"D:\Scarlet_Works\Scarlet\crypto_data.csv"
-MAX_ROWS = 50000
+CSV_PATH = r"C:\Scarlet_Works\Scarlet\crypto_data.csv"
+MAX_ROWS = 150000
 
 INPUT_SEQ_LEN =75 # Do not change
 OUTPUT_SEQ_LEN =12  # Do not change
@@ -638,7 +649,7 @@ if not os.path.isfile(CSV_PATH):
 import os
 from cryptography.hazmat.primitives import serialization
 
-memory_path= r"D:\Scarlet_Works\Scarlet\scarlet_memory.csv" #Change to memory path you use
+memory_path= r"C:\Scarlet_Works\Scarlet\scarlet_memory.csv" #Change to memory path you use
 
 
 
@@ -944,8 +955,8 @@ def build_or_load_model(device, input_dim, narrator=None):
     - Always use a fresh optimizer for online RL
     """
 
-    OFFLINE_CKPT = r"D:\Scarlet_Works\Scarlet\checkpoints\bestmodel.ckpt"
-    ONLINE_CKPT  = r"D:\Scarlet_Works\Scarlet\checkpoints\online_best.ckpt"
+    OFFLINE_CKPT = r"C:\Scarlet_Works\Scarlet\checkpoints\bestmodel.ckpt"
+    ONLINE_CKPT  = r"C:\Scarlet_Works\Scarlet\checkpoints\online_best.ckpt"
 
     os.makedirs(os.path.dirname(OFFLINE_CKPT), exist_ok=True)
     input_dim = len(INPUT_FEATURES)
@@ -3074,11 +3085,11 @@ def execute_trade_part2(
             roi = (curr_dec - entry_dec) / entry_dec
 
 
-            if roi >= Decimal("0.0125") and forecast_delta < 0:
+            if roi >= Decimal("0.0333") and forecast_decimal < 0:
                 if narrator:
                     narrator.narrate(
-                        f"💰 Hard override → ROI {roi:.4f} ≥ 1.25% and forecast bearish "
-                        f"({forecast_delta:.4f}) → FORCED SELL."
+                        f"💰 Hard override → ROI {roi:.4f} ≥ 3.33% and forecast bearish "
+                        f"({forecast_decimal:.4f}) → FORCED SELL."
                     )
                 return {
                     "execute": True,
@@ -3800,7 +3811,6 @@ def execute_trade(
     )
 
    
-    from Scarlet_Core import cooldown_cycles 
 
     if part2_ctx["side"] == "SELL" and part2_ctx["execute"]:
         try:
@@ -4409,33 +4419,35 @@ def scale_live_features(df, scaler, numeric_inputs):
     Ensures column presence, correct order, and safe numeric conversion.
     """
 
- 
+    # --- 1. Validate required columns ---
     missing = [col for col in numeric_inputs if col not in df.columns]
     if missing:
         raise KeyError(f"Missing numeric input columns: {missing}")
 
+    # --- 2. Extract numeric block in correct order ---
+    block = df[numeric_inputs].copy()
 
-    block = df[numeric_inputs]
-
-  
+    # --- 3. Ensure float32 dtype ---
     try:
         block = block.astype("float32")
     except Exception as e:
         raise ValueError(f"Failed to convert live features to float32: {e}")
 
+    # --- 4. Check for NaNs ---
     if block.isnull().any().any():
-        raise ValueError(f"NaNs detected in live numeric features: {block}")
+        raise ValueError(f"NaNs detected in live numeric features:\n{block}")
 
+    # --- 5. Apply scaler ---
     try:
         scaled = scaler.transform(block)
     except Exception as e:
         raise RuntimeError(f"Scaler transform failed: {e}")
 
-   
+    # --- 6. Assign back into dataframe ---
+    df = df.copy()
     df[numeric_inputs] = scaled
 
     return df
-
 
 
 import praw
@@ -4521,7 +4533,8 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 
 
-SENTIMENT_MODEL_NAME = "cardiffnlp/twitter-roberta-base-sentiment"
+SENTIMENT_MODEL_NAME = "distilbert-base-uncased-finetuned-sst-2-english"
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -4626,7 +4639,7 @@ import json
 import time
 from collections import deque
 
-CACHE_PATH = r"D:\Scarlet_Works\Scarlet\sentiment_cache.json"
+CACHE_PATH = r"C:\Scarlet_Works\Scarlet\sentiment_cache.json"
 
 
 
@@ -4900,7 +4913,7 @@ def append_to_cache(cache_df, new_df):
 
 
 def load_cached_candles(symbol):
-    path = f"D:/Scarlet_Works/Scarlet/candle_cache_{symbol}.csv"
+    path = f"C:/Scarlet_Works/Scarlet/candle_cache_{symbol}.csv"
     cols = ["timestamp", "open", "high", "low", "close", "volume"]
 
     if not os.path.isfile(path):
@@ -4939,10 +4952,7 @@ def build_feature_tensor(
     limit=None,
     narrator=None,
 ):
-    """
-    Build a scaled feature tensor using the SAME 51‑feature schema
-    used in training, micro‑training, and offline training.
-    """
+    
 
     if df is None:
         raise ValueError("build_feature_tensor() requires df=engineered merged_df")
@@ -5083,11 +5093,15 @@ def demo_inference(
 
     X = enriched_df[INPUT_FEATURES].fillna(0.0).values
 
+    # Scale using the same scaler
     X_scaled = scaler.transform(X)
 
-    seq_tensor = torch.tensor(
-        X_scaled, dtype=torch.float32, device=device
-    ).unsqueeze(0)
+    # Convert to contiguous numpy
+    seq_np = np.ascontiguousarray(X_scaled, dtype=np.float32)
+
+    # Convert to torch
+    seq_tensor = torch.from_numpy(seq_np).to(device).unsqueeze(0).contiguous()
+
 
     with torch.no_grad():
         out = model(seq_tensor)
@@ -5490,6 +5504,11 @@ def make_dataloaders(merged_df=None, batch_size=256):
         "sentiment_slope_120_btcusd",
         "sentiment_slope_250_btcusd",
     ]
+    INPUT_FEATURES_NO_SENTIMENT = [
+        f for f in INPUT_FEATURES
+        if not f.startswith("reddit_sentiment_")
+        and not f.startswith("sentiment_slope_")
+    ]
 
     output_features = [f"close_{sym}" for sym in symbols]
     close_idx = output_features.index("close_solusd")
@@ -5516,6 +5535,8 @@ def make_dataloaders(merged_df=None, batch_size=256):
         batch_size=batch_size,
         shuffle=True,
         num_workers=0,
+        pin_memory=True,
+        persistent_workers=False,
         collate_fn=shaping_collate_fn,
         drop_last=True,
     )
@@ -5525,9 +5546,12 @@ def make_dataloaders(merged_df=None, batch_size=256):
         batch_size=batch_size,
         shuffle=False,
         num_workers=0,
+        pin_memory=True,
+        persistent_workers=False,
         collate_fn=shaping_collate_fn,
         drop_last=True,
     )
+
 
 
     market_tensor = torch.tensor(
@@ -5741,17 +5765,15 @@ def save_asset_cache(symbol, df):
     Atomic, safe cache writer.
     Writes the candle DataFrame to disk without risking corruption.
     """
-    path = f"D:/Scarlet_Works/Scarlet/candle_cache_{symbol}.csv"
-    
+    base_dir = os.path.join(os.getcwd(), "cache")
+    os.makedirs(base_dir, exist_ok=True)
 
-   
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    path = os.path.join(base_dir, f"candle_cache_{symbol}.csv")
 
- 
     tmp_path = path + ".tmp"
     try:
         df.to_csv(tmp_path, index=False)
-        os.replace(tmp_path, path)  
+        os.replace(tmp_path, path)
     except Exception as e:
         print(f"❌ Failed to save cache for {symbol}: {e}")
 
@@ -5761,13 +5783,14 @@ def save_asset_cache(symbol, df):
 
 
 
-def load_full_cache(sym, target=50000):
+
+def load_full_cache(sym, target=150000):
     """
     Safe full-cache loader.
     Loads cached candles, enforces schema, trims to target rows.
     NEVER overwrites the cache file.
     """
-    path = f"D:/Scarlet_Works/Scarlet/candle_cache_{sym}.csv"
+    path = f"C:/Scarlet_Works/Scarlet/candle_cache_{sym}.csv"
     
 
     cols = ["timestamp", "open", "high", "low", "close", "volume"]
@@ -5794,7 +5817,7 @@ def load_full_cache(sym, target=50000):
 
     return df
 
-def initialize_asset_cache(symbol, timeframe="15m", max_candles=50000, narrator=None):
+def initialize_asset_cache(symbol, timeframe="15m", max_candles=150000, narrator=None):
     cache = load_full_cache(symbol)
 
    
@@ -5836,7 +5859,7 @@ def save_checkpoint(model, optimizer, epoch, path, narrator=None, phase="update"
         narrator.narrate(f"💾 Checkpoint saved → {path} (epoch={epoch}, phase={phase}, loss={loss})")
 
 def save_micro_checkpoint(model, optimizer, loss, narrator, path=None):
-    path = r"D:\Scarlet_Works\Scarlet\checkpoints\online_best.ckpt"
+    path = r"C:\Scarlet_Works\Scarlet\checkpoints\online_best.ckpt"
 
     save_checkpoint(
         model=model,
@@ -5978,7 +6001,7 @@ def engineer_features_multi(merged_df: pd.DataFrame, narrator=None) -> pd.DataFr
 
 MAX_CANDLES = 30_000
 
-CACHE_DIR = r"D:\Scarlet_Works\Scarlet"
+CACHE_DIR = r"C:\Scarlet_Works\Scarlet"
   
 def get_cache_path(symbol):
     return os.path.join(CACHE_DIR, f"candle_cache_{symbol}.csv")
@@ -6089,7 +6112,7 @@ symbols = ["solusd", "ethusd", "btcusd"]
 
 
 for sym in symbols:
-    initialize_asset_cache(sym, timeframe="15m", max_candles=50000, narrator=narrator)
+    initialize_asset_cache(sym, timeframe="15m", max_candles=150000, narrator=narrator)
 
 
 crypto_data = fetch_and_align_assets(symbols, timeframe="15m")
@@ -6147,7 +6170,7 @@ from sklearn.preprocessing import RobustScaler
 def build_offline_dataset(
     symbols=None,
     timeframe="15m",
-    target=50000,
+    target=150000,
     narrator=None,
 ):
     if symbols is None:
@@ -6203,27 +6226,31 @@ def build_offline_dataset(
 
     return merged_df
 
+def precompute_offline_dataset(
+    symbols=None,
+    target=150000,
+    out_path="offline_full_dataset.parquet",
+    narrator=None,
+):
+    if symbols is None:
+        symbols = ["solusd", "ethusd", "btcusd"]
+
+    merged = build_offline_dataset(symbols=symbols, target=target, narrator=narrator)
+    engineered = engineer_features_multi(merged, narrator=narrator)
+    engineered.to_parquet(out_path)
+    return out_path
+
 
 def load_or_build_offline_df(symbols=None, narrator=None, lookback=2000):
-
-    merged_df = build_offline_dataset(
-        symbols=symbols,
-        narrator=narrator,
-        target=lookback,
-    )
-
-    engineered = engineer_features_multi(merged_df, narrator=narrator)
+    df = pd.read_parquet("offline_full_dataset.parquet")
 
     numeric_cols = INPUT_FEATURES
+    scaler = RobustScaler().fit(df[numeric_cols].fillna(0.0))
 
-    scaler = RobustScaler().fit(engineered[numeric_cols].fillna(0.0))
+    df_scaled = df.copy()
+    df_scaled[numeric_cols] = scaler.transform(df[numeric_cols].fillna(0.0))
 
-    df_scaled = engineered.copy()
-    df_scaled[numeric_cols] = scaler.transform(
-        engineered[numeric_cols].fillna(0.0)
-    )
-
-    return engineered, df_scaled, scaler, numeric_cols
+    return df, df_scaled, scaler, numeric_cols
 
 
 
@@ -6315,7 +6342,10 @@ def build_dataloader(df_raw, df_scaled, batch_size=256, window_size=128, target_
         shuffle=True,
         drop_last=True,
         num_workers=0,
+        pin_memory=True,
+        persistent_workers=False,
     )
+
 
     return loader
 
@@ -6541,7 +6571,8 @@ def offline_shaping_collate_fn(batch):
     - assembles shaping dict with (B, 3) tensors for all assets
     """
 
-    inputs = torch.stack([item["inputs"] for item in batch], dim=0)  
+    # (B, T, F)
+    inputs = torch.stack([item["inputs"] for item in batch], dim=0)
 
     horizon_deltas = []
     current_prices = []
@@ -6552,59 +6583,31 @@ def offline_shaping_collate_fn(batch):
     slopes = []
 
     for item in batch:
-        closes = item["targets"].view(-1, 3) 
+        # --- Compute horizon deltas ---
+        closes = item["targets"].view(-1, 3)   # (H, 3)
         start = closes[0]
         end = closes[-1]
         delta = (end - start) / torch.clamp(start, min=1e-8)
         horizon_deltas.append(delta)
 
+        # --- New shaping format (already tensors) ---
         shp = item["shaping"]
 
-     
-        current_prices.append(torch.tensor([
-            shp["current_price_solusd"],
-            shp["current_price_ethusd"],
-            shp["current_price_btcusd"],
-        ], dtype=torch.float32))
+        current_prices.append(shp["current_price"])     # (3,)
+        atr_vals.append(shp["atr"])                    # (3,)
+        vwap_vals.append(shp["vwap"])                  # (3,)
+        macd_lines.append(shp["macd_line"])            # (3,)
+        signal_lines.append(shp["signal_line"])        # (3,)
+        slopes.append(shp["slope"])                    # (3,)
 
-        atr_vals.append(torch.tensor([
-            shp["ATR_solusd"],
-            shp["ATR_ethusd"],
-            shp["ATR_btcusd"],
-        ], dtype=torch.float32))
-
-        vwap_vals.append(torch.tensor([
-            shp["VWAP_solusd"],
-            shp["VWAP_ethusd"],
-            shp["VWAP_btcusd"],
-        ], dtype=torch.float32))
-
-        macd_lines.append(torch.tensor([
-            shp["macd_line_solusd"],
-            shp["macd_line_ethusd"],
-            shp["macd_line_btcusd"],
-        ], dtype=torch.float32))
-
-        signal_lines.append(torch.tensor([
-            shp["signal_line_solusd"],
-            shp["signal_line_ethusd"],
-            shp["signal_line_btcusd"],
-        ], dtype=torch.float32))
-
-        slopes.append(torch.tensor([
-            shp["slope_10_solusd"],
-            shp["slope_10_ethusd"],
-            shp["slope_10_btcusd"],
-        ], dtype=torch.float32))
-
-
-    targets = torch.stack(horizon_deltas, dim=0)      
-    current_price = torch.stack(current_prices, dim=0) 
-    atr = torch.stack(atr_vals, dim=0)                
-    vwap = torch.stack(vwap_vals, dim=0)               
-    macd_line = torch.stack(macd_lines, dim=0)         
-    signal_line = torch.stack(signal_lines, dim=0)     
-    slope = torch.stack(slopes, dim=0)                 
+    # --- Stack everything into (B, 3) ---
+    targets = torch.stack(horizon_deltas, dim=0)
+    current_price = torch.stack(current_prices, dim=0)
+    atr = torch.stack(atr_vals, dim=0)
+    vwap = torch.stack(vwap_vals, dim=0)
+    macd_line = torch.stack(macd_lines, dim=0)
+    signal_line = torch.stack(signal_lines, dim=0)
+    slope = torch.stack(slopes, dim=0)
 
     shaping = {
         "current_price": current_price,
@@ -6622,21 +6625,15 @@ def offline_shaping_collate_fn(batch):
     }
 
 
+from torch.utils.data import DataLoader, random_split
+
 
 def make_offline_dataloader(batch_size, device):
-    symbols = ["solusd", "ethusd", "btcusd"]
+   
 
-    
-    merged = fetch_and_align_assets(symbols)
+    merged = pd.read_parquet("offline_precomputed_features.parquet")
 
- 
-    merged = add_engineered_features(
-        merged,
-        symbols=symbols,
-        narrator=None
-    )
 
-  
     dataset = CandleDatasetV2(
         df=merged,
         INPUT_FEATURES=INPUT_FEATURES,
@@ -6647,23 +6644,28 @@ def make_offline_dataloader(batch_size, device):
         mode="offline",
     )
 
-
     train_size = int(len(dataset) * 0.9)
     val_size = len(dataset) - train_size
-    train_ds, val_ds = torch.utils.data.random_split(dataset, [train_size, val_size])
+    train_ds, val_ds = random_split(dataset, [train_size, val_size])
 
-    train_loader = torch.utils.data.DataLoader(
+    train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
         shuffle=True,
         collate_fn=offline_shaping_collate_fn,
+        num_workers=0,
+        pin_memory=True,
+        persistent_workers=False,
     )
 
-    val_loader = torch.utils.data.DataLoader(
+    val_loader = DataLoader(
         val_ds,
         batch_size=batch_size,
         shuffle=False,
         collate_fn=offline_shaping_collate_fn,
+        num_workers=0,
+        pin_memory=True,
+        persistent_workers=False,
     )
 
     return train_loader, val_loader, INPUT_FEATURES, ["close_solusd", "close_ethusd", "close_btcusd"]
@@ -7680,8 +7682,8 @@ def warm_start_online_buffer(
 
     narrator.narrate(f"✅ Warm‑start complete → {added} samples added.")
     
-    ONLINE_CKPT  = r"D:\Scarlet_Works\Scarlet\checkpoints\online_best.ckpt"
-OFFLINE_CKPT = r"D:\Scarlet_Works\Scarlet\checkpoints\bestmodel.ckpt"
+    ONLINE_CKPT  = r"C:\Scarlet_Works\Scarlet\checkpoints\online_best.ckpt"
+OFFLINE_CKPT = r"C:\Scarlet_Works\Scarlet\checkpoints\bestmodel.ckpt"
 def load_scarlet_model(model, narrator=None):
 
     if os.path.exists(OFFLINE_CKPT):
@@ -7708,7 +7710,7 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
     online_step = 0
     warmup_cycles = 16
     cycle_count = 0
-    
+    import threading
     passive_scheduler = PassiveLearningScheduler(
         start_weight=0.0,     
         max_weight=0.10,    
@@ -7716,9 +7718,12 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
         ramp_steps=500,      
         error_clip=0.02,     
     )
-    print("🔥 ENTERED main()")
-    symbols = ["solusd", "ethusd", "btcusd"]
     
+    symbols = ["solusd", "ethusd", "btcusd"]
+    import traceback
+    print("🔥 ENTERED main()")
+    traceback.print_stack()
+
    
     narrator = Narrator()
     reward_shaper = DirectionalRewardShaper(narrator)
@@ -7728,8 +7733,8 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
     offline_training_lock = threading.Lock()
     nonce_mgr = SmartNonceManager()
 
-    memory_path = r"D:\Scarlet_Works\Scarlet\scarlet_memory.csv"
-    CHECKPOINT_PATH = r"D:\Scarlet_Works\Scarlet\checkpoints\bestmodel.ckpt"
+    memory_path = r"C:\Scarlet_Works\Scarlet\scarlet_memory.csv"
+    CHECKPOINT_PATH = r"C:\Scarlet_Works\Scarlet\checkpoints\bestmodel.ckpt"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
    
@@ -7805,6 +7810,8 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
     narrator.narrate("📚 Cache initialization complete — entering runtime loop")
 
 
+    import threading
+    import inspect
 
     def run_multi_asset_trading_cycle(
         mode: str,
@@ -7819,6 +7826,8 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
         classifier=None,
         online_buffer=None,
     ):
+        caller = inspect.stack()[1]
+        
         global POLICY_CONFIG
         if symbols is None:
             symbols = ["solusd", "ethusd", "btcusd"]
@@ -7947,9 +7956,14 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
             if forecast_price is None:
                 narrator.narrate(f"⚠️ Inference failed for {base} — defaulting actual_delta=0")
                 per_asset_entry["actual_delta"] = 0.0
-                per_asset_entry["policy_delta"] = 0.0  
-                results[sym] = per_asset_entry       
+                per_asset_entry["policy_delta"] = 0.0
+
+                # ✅ Safe fallback for downstream SELL logic
+                context["forecast_decimal"] = Decimal("0")
+
+                results[sym] = per_asset_entry
                 continue
+
 
 
             if isinstance(forecast_delta, (float, int)):
@@ -8063,9 +8077,15 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
             forecast_strength *= (Decimal("1") - Decimal(str(flat_score)))
 
 
-            horizon_weights = np.array([0.4, 0.3, 0.2, 0.15, 0.5, 0.3], dtype=float)
+            horizon_weights = np.array([0, 0, 0.1, 0.6, 0.2, 0.1])
             horizon_weights /= horizon_weights.sum()
             policy_delta = float(np.dot(forecast_vec, horizon_weights))
+
+
+
+            # 🔥 This is the forecast value used by SELL logic
+            context["forecast_decimal"] = Decimal(str(policy_delta))
+
             per_asset_entry["price"] = float(market_price_dec)
             per_asset_entry["forecast_vec"] = forecast_vec.tolist()
             per_asset_entry["forecast_delta"] = float(policy_delta)
@@ -8075,6 +8095,7 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
             per_asset_entry["volatility"] = float(vol_value)
             per_asset_entry["flat_score"] = float(flat_score)
             per_asset_entry["regime"] = regime
+
 
             current_posture = portfolio_posture.get(sym)
             if current_posture != previous_posture[sym]:
@@ -8091,6 +8112,8 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
             forecast_error = abs(policy_delta - float(actual_delta))
             if forecast_error > float(POLICY_CONFIG.error_threshold):
                 large_forecast_error = True
+
+
 
             
             if trade_result and trade_result.get("execute") and trade_result.get("side") == "SELL":
@@ -8139,6 +8162,7 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
                 forecast_price=policy_forecast_price,
                 market_price=market_price_dec
             )
+            context["forecast_decimal"] = Decimal(str(forecast_delta))
 
 
 
@@ -8373,60 +8397,54 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
     if not hasattr(model, "best_loss"):
         model.best_loss = float("inf")
 
-    for sym in symbols:
-        update_asset_cache(sym, timeframe="15m", narrator=narrator)
 
-        last_micro_train = time.time()
-        last_train_row_count = 0 
+    last_micro_train = time.time()
+    last_train_row_count = 0 
 
     
-        merged_df = fetch_and_align_assets(symbols, timeframe="15m")
-        engineered = engineer_features_multi(merged_df, narrator=narrator)
+    merged_df = fetch_and_align_assets(symbols, timeframe="15m")
+    
         
        
          
-        BUFFER_SIZE = 512
-        MIN_SAMPLES = 64
+    BUFFER_SIZE = 512
+    MIN_SAMPLES = 64
 
-        online_buffer = OnlineReplayBuffer(capacity=BUFFER_SIZE, min_samples=MIN_SAMPLES)
-        warm_start_online_buffer(
-            online_buffer=online_buffer,
-            offline_dataset=offline_dataset,
-            device=device,
-            narrator=narrator,
-            n_samples=64,
-        )
-
-
-
-        first_cycle = True
-
-        try:
-            with open("online_step.txt", "r") as f:
-                online_step = int(f.read().strip())
-        except:
-            online_step = 0
-
-        loss_scheduler = OnlineRLScheduler(
-            rl_start=0.02,
-            rl_max=0.10,
-            warmup_steps=100,
-            ramp_steps=1000,
-        )
+    online_buffer = OnlineReplayBuffer(capacity=BUFFER_SIZE, min_samples=MIN_SAMPLES)
+    warm_start_online_buffer(
+        online_buffer=online_buffer,
+        offline_dataset=offline_dataset,
+        device=device,
+        narrator=narrator,
+        n_samples=64,
+    )
 
 
-        try:
-            with open("online_step.txt", "r") as f:
-                online_step = int(f.read().strip())
-        except Exception:
-            online_step = 0
 
-        loss_scheduler = OnlineRLScheduler(
-            rl_start=0.02,
-            rl_max=0.10,
-            warmup_steps=100,
-            ramp_steps=1000,
-        )
+    first_cycle = True
+
+    try:
+        with open("online_step.txt", "r") as f:
+            online_step = int(f.read().strip())
+    except:
+        online_step = 0
+
+    loss_scheduler = OnlineRLScheduler(
+        rl_start=0.02,
+        rl_max=0.10,
+        warmup_steps=100,
+        ramp_steps=1000,
+    )
+
+
+    
+
+    loss_scheduler = OnlineRLScheduler(
+        rl_start=0.02,
+        rl_max=0.10,
+        warmup_steps=100,
+        ramp_steps=1000,
+    )
     def build_online_sample(
         seq_tensor,
         pred_deltas,
@@ -8644,11 +8662,13 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
             invalid = True
 
      
-        seq_tensor = torch.tensor(
-            engineered.iloc[-128:][INPUT_FEATURES].values,
-            dtype=torch.float32,
-            device=device,
-        )
+        if isinstance(df_scaled, pd.DataFrame) and "timestamp" in df_scaled.columns:
+            df_scaled = df_scaled.drop(columns=["timestamp"])
+
+        seq_np = np.ascontiguousarray(df_scaled.values, dtype=np.float32)
+
+
+        seq_tensor = torch.from_numpy(seq_np).to(device).unsqueeze(0).contiguous()
 
         
         sol_vol = (float(sol_atr) / float(sol_price)) if sol_atr else 0.0
@@ -8666,12 +8686,26 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
             if invalid:
                 narrator.narrate("⏳ Skipping drift check — shaping signals not ready.")
             else:
-              
+
+                # --- NEW: collapse forecasts BEFORE drift ---
+                sol_vec = per_asset["solusd"].get("forecast_vec", [sol_forecast] * 6)
+                eth_vec = per_asset["ethusd"].get("forecast_vec", [eth_forecast] * 6)
+                btc_vec = per_asset["btcusd"].get("forecast_vec", [btc_forecast] * 6)
+
+                weights = np.array([0, 0, 0.1, 0.6, 0.2, 0.1], dtype=float)
+                weights /= weights.sum()
+
+                sol_forecast = float(np.dot(sol_vec, weights))
+                eth_forecast = float(np.dot(eth_vec, weights))
+                btc_forecast = float(np.dot(btc_vec, weights))
+                # -------------------------------------------------------------
+
                 pred_deltas = torch.tensor(
                     [sol_forecast, eth_forecast, btc_forecast],
                     dtype=torch.float32,
                     device=device,
                 )
+
                 actual_deltas = torch.tensor(
                     [sol_actual, eth_actual, btc_actual],
                     dtype=torch.float32,
@@ -8682,14 +8716,15 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
                 global_regime = pick_global_regime(regimes)
 
                 drift, drift_info = compute_drift(
-                    pred_delta=pred_deltas,       
-                    true_delta=actual_deltas,       
-                    volatility=multi_vol_tensor,   
+                    pred_delta=pred_deltas,
+                    true_delta=actual_deltas,
+                    volatility=multi_vol_tensor,
                     max_mag=0.05,
                     regime=global_regime,
                 )
 
-                if drift > float(DRIFT_THRESHOLD):
+                # ⭐ ONLINE TRAINING TOGGLE HERE ⭐
+                if ONLINE_TRAINING_ENABLED and drift > float(DRIFT_THRESHOLD):
                     narrator.narrate(
                         f"📈 Drift {drift:.4f} > {DRIFT_THRESHOLD:.4f} → online micro‑training step."
                     )
@@ -8702,16 +8737,11 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
                         f"regime={drift_info['regime']}"
                     )
 
-                  
-                    sol_vec = per_asset["solusd"].get("forecast_vec", [sol_forecast] * 6)
-                    eth_vec = per_asset["ethusd"].get("forecast_vec", [eth_forecast] * 6)
-                    btc_vec = per_asset["btcusd"].get("forecast_vec", [btc_forecast] * 6)
-
                     sample = build_online_sample(
                         seq_tensor=seq_tensor,
-                        pred_deltas=[sol_vec, eth_vec, btc_vec],         
-                        actual_deltas=[sol_actual, eth_actual, btc_actual],  
-                        multi_vol=[sol_vol, eth_vol, btc_vol],            
+                        pred_deltas=[sol_vec, eth_vec, btc_vec],
+                        actual_deltas=[sol_actual, eth_actual, btc_actual],
+                        multi_vol=[sol_vol, eth_vol, btc_vol],
                         narrator=narrator,
                     )
 
@@ -8719,8 +8749,8 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
                         online_buffer.add(sample)
 
                     if len(online_buffer) >= MIN_SAMPLES:
-                        drift_value = float(drift)  
-                        threshold_value = float(DRIFT_THRESHOLD)  
+                        drift_value = float(drift)
+                        threshold_value = float(DRIFT_THRESHOLD)
 
                         epochs = int(min(20, max(1, drift_value / threshold_value)))
                         narrator.narrate(f"📈 Drift-triggered → running {epochs} micro‑epochs")
@@ -8742,12 +8772,14 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
                                 best_run_loss = loss
                                 best_run_state = {k: v.clone() for k, v in model.state_dict().items()}
 
-                        ONLINE_CKPT  = r"D:\Scarlet_Works\Scarlet\checkpoints\online_best.ckpt"
+                        ONLINE_CKPT = r"C:\Scarlet_Works\Scarlet\checkpoints\online_best.ckpt"
 
                         if best_run_state is not None:
                             model.load_state_dict(best_run_state)
-                            save_micro_checkpoint(model, optimizer, best_run_loss, narrator,
-                                                  path=ONLINE_CKPT)
+                            save_micro_checkpoint(
+                                model, optimizer, best_run_loss, narrator,
+                                path=ONLINE_CKPT
+                            )
                             narrator.narrate("🏅 Online micro‑training improved model — online checkpoint updated")
 
                         if loss is not None:
@@ -8756,6 +8788,7 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
                         narrator.narrate(
                             f"⏳ Buffer not ready → {len(online_buffer)}/{MIN_SAMPLES} samples."
                         )
+
                 else:
                     narrator.narrate(f"🟢 Drift {drift:.4f} within tolerance.")
 
@@ -8764,16 +8797,20 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
             narrator.narrate(f"⚠️ Drift block error: {e}")
             narrator.narrate(traceback.format_exc())
 
-        narrator.narrate("⏳ Sleeping 16 minutes before next cycle...")
+        narrator.narrate("⏳ Sleeping 61 minutes before next cycle...")
         cycle_count += 1
-        time.sleep(16 * 60)
+        time.sleep(61 * 60)
 
 
 
 
 
 if __name__ == "__main__":
-   
+    precompute_offline_dataset()
+    merged = fetch_and_align_assets(symbols)
+    merged = add_engineered_features(merged, symbols=symbols)
+    merged.to_parquet("offline_precomputed_features.parquet")
+
     input_dim = len(INPUT_FEATURES)
 
     model, optimizer, lr_scheduler, loss_scheduler, epoch = build_or_load_model(

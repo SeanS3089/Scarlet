@@ -201,7 +201,7 @@ def run_offline_training(
     epochs=500,
     batch_size=256,
     scale=1.0,
-    checkpoint_path=r"D:\Scarlet_Works\Scarlet\checkpoints\bestmodel.ckpt",
+    checkpoint_path=r"C:\Scarlet_Works\Scarlet\checkpoints\bestmodel.ckpt",
     narrator=None,
     make_dataloader=make_offline_dataloader,
     scheduler=None,
@@ -265,6 +265,7 @@ def run_offline_training(
             seq_batch = batch["inputs"].to(device)     
             delta_batch = batch["targets"].to(device)  
             shaping = batch["shaping"]
+            
 
             optimizer.zero_grad(set_to_none=True)
 
