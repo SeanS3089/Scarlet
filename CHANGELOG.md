@@ -8,6 +8,53 @@ This project uses **Semantic Versioning** and the **Keep a Changelog** format.
 
 ---
 
+### [1.6.1] – 2026‑04‑10
+### Added
+-Full multi‑asset alignment across SOLUSD, ETHUSD, BTCUSD, and XRPUSD with strict schema guarantees.
+
+-Unified multi‑horizon delta engine (8‑horizon, 2‑hour lookahead) with consistent cross‑asset indexing.
+
+-GPU‑resident shaping tensors (price, ATR, VWAP, MACD, signal line, slope) for zero‑copy training.
+
+-Pre‑tensorized offline dataset with full‑history slicing and instant GPU‑ready batches.
+
+-Vectorized reward engine with fused shaping logic and multi‑asset ROI aggregation.
+
+-High‑throughput training loop capable of saturating RTX 5080‑class GPUs at 70–85% utilization.
+
+-Real‑time epoch execution (≈2 seconds per epoch) enabling rapid research iteration.
+
+-Cross‑asset stability improvements for delta prediction, shaping consistency, and horizon alignment.
+
+-Automatic best‑checkpoint tracking with negative‑reward optimization support.
+
+### Fixed
+-Incorrect XRP horizon alignment caused by mixed indexing in the old delta builder.
+
+-CPU bottleneck in the offline dataloader caused by Pandas slicing, .fillna(), and per‑sample tensor creation.
+
+-GPU starvation due to Python‑side padding and shaping dict construction inside __getitem__.
+
+-Occasional reward‑shape mismatches between assets when slicing near sequence boundaries.
+
+-Training loop stalls caused by CPU→GPU transfer overhead in shaping tensors.
+
+-Validation instability from inconsistent shaping scales across assets.
+
+### Changed
+-Offline dataset now performs zero work in __getitem__ — all preprocessing is done once at load time.
+
+-Reward scale normalized to realistic multi‑asset ROI magnitudes (loss now converges around −2e‑3 instead of e‑10).
+
+-Training loop updated to support AMP, fused shaping, and GPU‑resident deltas.
+
+-Collate function rewritten to perform GPU‑side padding for maximum throughput.
+
+-Default offline training cadence updated to reflect new high‑speed pipeline.
+
+
+
+
 ## [1.6.0] – 2026‑02-28
 ### Added
 - **Premium‑tier data pipeline** with full‑history support for research‑grade training.
