@@ -593,7 +593,7 @@ def compute_reward_with_adaptive_scaling(
     return blended, scale_factor
 
 
-
+ASSETS = ["solusd", "ethusd", "btcusd", "xrpusd"]
 class HybridForecasterD(pl.LightningModule):
     def __init__(
         self,
@@ -606,7 +606,19 @@ class HybridForecasterD(pl.LightningModule):
         close_idx: int = 0,
         use_gradient_checkpointing: bool = True,
         narrator=None,
+        assets=None,   # ⭐ ADD THIS
     ):
+        super().__init__()
+        
+        # -------------------------
+        # ASSET SETUP (correct fix)
+        # -------------------------
+        if assets is None:
+            assets = ["solusd", "ethusd", "btcusd", "xrpusd"]
+
+        self.assets = assets
+        self.num_assets = len(self.assets)
+
         super().__init__()
         self.price_dim = price_dim
         self.hidden_size = hidden_size
@@ -617,7 +629,8 @@ class HybridForecasterD(pl.LightningModule):
         self.narrator = narrator or Narrator()
         self.num_layers = num_layers
         self.dropout = dropout
-
+        self.assets = assets or ["solusd", "ethusd", "btcusd", "xrpusd"]
+        self.num_assets = len(self.assets)
         self.price_lstm = nn.LSTM(
             input_size=price_dim,
             hidden_size=hidden_size,
@@ -646,10 +659,10 @@ class HybridForecasterD(pl.LightningModule):
         )
         self.feature_transform = nn.Linear(hidden_size, hidden_size // 2)
         self.feature_dim = self.feature_transform.out_features
-        self.layer_norm = nn.LayerNorm(hidden_size)
+        self.layer_norm = nn.LayerNorm(hidden_size // 2)
         self.output_dropout = nn.Dropout(dropout)
 
-        self.num_assets = 3  
+        self.num_assets = 4 
 
         self.asset_embeddings = nn.Parameter(
             torch.randn(self.num_assets, self.feature_dim)
@@ -663,18 +676,20 @@ class HybridForecasterD(pl.LightningModule):
         )
 
         self.price_head = nn.Linear(self.feature_dim, 1)
+        self.HORIZONS = 8
+
         self.delta_head = nn.Sequential(
             nn.Linear(self.feature_dim, self.feature_dim // 2),
             nn.ReLU(),
-            nn.Linear(self.feature_dim // 2, 6),
-            nn.Tanh()
+            nn.Linear(self.feature_dim // 2, self.HORIZONS),
+            nn.Tanh(),
         )
         self.max_delta = 0.02
 
 
         self.strength_head = nn.Linear(self.feature_dim, 1)
 
-        self.policy_head = nn.Linear(self.feature_dim, 3)
+        self.policy_head = nn.Linear(self.feature_dim, self.num_assets * 3)
         self.softmax = nn.Softmax(dim=-1)
         self.best_loss = float("inf")
 
@@ -753,95 +768,70 @@ class HybridForecasterD(pl.LightningModule):
             
 
 
-    def forward(self, x: torch.Tensor, decode_steps=12):
+    def forward(self, x):
         """
-        Produces: [B, num_assets, 3]  (price, delta, strength)
+        x: [batch, seq_len, price_dim]
         """
-        MAX_DELTA = 0.02
+        import torch.backends.cudnn as cudnn
+        batch_size, seq_len, _ = x.shape
 
-        # Always start with a contiguous input
-        x = x.contiguous()
+        # Ensure cuDNN‑friendly layout (even though we'll disable it)
+        x = x.to(dtype=torch.float32).contiguous()
 
-        B, T, _ = x.shape
+        # Encoder (cuDNN disabled for this LSTM to avoid STATUS_NOT_SUPPORTED)
+        x = self.encoder_dropout(x)
+        with cudnn.flags(enabled=False):
+            enc_out, _ = self.price_lstm(x)         # [B, T, H]
 
-        # --- PRICE LSTM ENCODER ---
-        # Limit how much history the LSTM sees (e.g., last 2048 steps)
-        max_lstm_len = 2048
-        seq_len = min(T, max_lstm_len)
+        # Transformer stack
+        h = enc_out
+        for block in self.transformer_blocks:
+            h = block(h)
 
-        price_input = x[:, -seq_len:, :self.price_dim].contiguous()
+        # Take last timestep
+        h_last = h[:, -1, :]                     # [B, H]
 
+        # Project to feature space
+        h_feat = self.feature_transform(h_last)  # [B, F]
+        h_feat = self.layer_norm(h_feat)
+        h_feat = self.output_dropout(h_feat)     # [B, F]
 
-        
+        # Asset embeddings
+        # Expand to [B, num_assets, F]
+        asset_emb = self.asset_embeddings.unsqueeze(0).expand(batch_size, -1, -1)
 
+        # Cross‑asset attention
+        # Query = asset_emb, Key/Value = asset_emb + h_feat broadcast
+        h_feat_expanded = h_feat.unsqueeze(1).expand(-1, self.num_assets, -1)
+        attn_input = asset_emb + h_feat_expanded  # [B, num_assets, F]
 
-        if self.training and self.use_gradient_checkpointing:
-            def lstm_forward(inp):
-                out, _ = self.price_lstm(inp)
-                return out
+        attn_out, _ = self.cross_asset_attention(
+            attn_input, attn_input, attn_input
+        )  # [B, num_assets, F]
 
-            enc_out = checkpoint.checkpoint(lstm_forward, price_input, use_reentrant=False)
-            _, (h_price, _) = self.price_lstm(price_input)
-        else:
-            enc_out, (h_price, _) = self.price_lstm(price_input)
+        # -------------------------
+        # Heads
+        # -------------------------
 
-        # --- TRANSFORMER BLOCKS ---
-        if self.training and self.use_gradient_checkpointing:
-            enc_out.requires_grad_(True)
-            for block in self.transformer_blocks:
-                enc_out = checkpoint.checkpoint(block, enc_out, use_reentrant=False)
-        else:
-            for block in self.transformer_blocks:
-                enc_out = block(enc_out)
+        # 1) Delta head (primary signal)
+        delta_raw = self.delta_head(attn_out)          # [B, num_assets, 2]
+        deltas = delta_raw * self.max_delta             # bounded in [-max_delta, max_delta]
 
-        enc_out = self.encoder_dropout(enc_out)
+        # 2) Strength head
+        strengths = torch.sigmoid(self.strength_head(attn_out)).squeeze(-1)  # [B, num_assets]
 
-        # --- SUMMARY VECTOR ---
-        enc_summary = enc_out[:, -1, :]
+        # 3) Policy head (optional)
+        policy_logits = self.policy_head(attn_out)                 # [B, num_assets, 3]
+        policy_probs = self.softmax(policy_logits)                 # [B, num_assets, 3]
 
-        # --- DECODER ---
-        features = self.feature_transform(enc_summary)
-        features = self.output_dropout(features)
-
-        dec_input = self.decoder_input_projection(x[:, -1, :]).unsqueeze(1)
-        dec_input = self.decoder_dropout(dec_input)
-
-        dec_hidden = h_price
-        dec_outputs = []
-        for _ in range(decode_steps):
-            dec_out, dec_hidden = self.gru(dec_input, dec_hidden)
-            dec_outputs.append(dec_out)
-            dec_input = self.decoder_dropout(dec_out)
-
-        dec_outputs = torch.cat(dec_outputs, dim=1)
-
-        # --- FUSION ---
-        fused = dec_outputs[:, -1, :] + enc_summary
-        fused = self.layer_norm(fused)
-
-        fused_features = self.feature_transform(fused)
-        fused_features = self.head_dropout(fused_features)
-
-        # --- CROSS-ASSET ATTENTION ---
-        asset_feats = fused_features.unsqueeze(1) + self.asset_embeddings.unsqueeze(0)
-        attn_out, _ = self.cross_asset_attention(asset_feats, asset_feats, asset_feats)
-
-        # --- HEADS ---
-        prices = self.price_head(attn_out).squeeze(-1)
-        strengths = self.strength_head(attn_out).squeeze(-1)
-        raw_deltas = self.delta_head(attn_out)
-        deltas = raw_deltas * MAX_DELTA
-
-        policy_logits = self.policy_head(attn_out)
-        policy_probs = self.softmax(policy_logits)
-
+        # We DO NOT use price_head anymore.
+        # "prices" will be derived externally from deltas + current price.
         return {
-            "prices": prices,
-            "strengths": strengths,
-            "deltas": deltas,
-            "forecast_deltas": {"multi": deltas},
-            "policy_probs": policy_probs,
+            "deltas": deltas,              # [B, num_assets, 2]
+            "strengths": strengths,        # [B, num_assets]
+            "policy": policy_probs,        # [B, num_assets, 3]
         }
+
 
     def forward_returns(self, x):
         """
@@ -1044,6 +1034,9 @@ class HybridForecasterD(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
 
+        # -------------------------
+        # SUPERVISED vs RL SCHEDULING
+        # -------------------------
         is_supervised = self.loss_scheduler.is_supervised_batch(self.epoch_batch_index)
         if is_supervised:
             self.loss_scheduler.record_supervised_batch()
@@ -1053,54 +1046,68 @@ class HybridForecasterD(pl.LightningModule):
         self.epoch_batch_index += 1
         self.global_batch_index += 1
 
-        x = batch["inputs"].to(self.device)   
-        y = batch["targets"].to(self.device)  
+        # -------------------------
+        # INPUTS
+        # -------------------------
+        x = batch["inputs"].to(self.device)
+        y = batch["targets"].to(self.device)
 
         B, T, F = y.shape
 
-    
-        pred, policy_probs = self(x)          
+        # -------------------------
+        # MODEL FORWARD
+        # -------------------------
+        out = self(x)
+        price_pred    = out["prices"]       # [B, 4]
+        delta_pred    = out["deltas"]       # [B, 4, 2]
+        strength_pred = out["strengths"]    # [B, 4]
+        policy_probs  = out["policy_probs"] # [B, 4, 3]
 
-        price_pred    = pred[:, :, 0]         
-        delta_pred    = pred[:, :, 1]      
-        strength_pred = pred[:, :, 2]         
-
-      
+        # -------------------------
+        # PRICE LOSS (SUPERVISED)
+        # -------------------------
         price_loss = 0.0
 
-        for asset_idx, sym in enumerate(ASSETS):
+        for asset_idx, sym in enumerate(ASSETS):   # ASSETS now length 4
             close_idx = self.input_features.index(f"close_{sym}")
-            target_close = y[:, -1, close_idx]          
-            pred_close   = price_pred[:, asset_idx]    
+            target_close = y[:, -1, close_idx]          # [B]
+            pred_close   = price_pred[:, asset_idx]     # [B]
             price_loss += F.smooth_l1_loss(pred_close, target_close)
 
         price_loss /= len(ASSETS)
 
-   
-        flat_policy = policy_probs.view(B * 3, 3)      
-        flat_actions = torch.multinomial(flat_policy, 1).squeeze(-1)  
-        actions = flat_actions.view(B, 3)           
+        # -------------------------
+        # POLICY SAMPLING (4 assets)
+        # -------------------------
+        # policy_probs: [B, 4, 3]
+        flat_policy = policy_probs.view(B * len(ASSETS), 3)  # [B*4, 3]
+        flat_actions = torch.multinomial(flat_policy, 1).squeeze(-1)  # [B*4]
+        actions = flat_actions.view(B, len(ASSETS))  # [B, 4]
 
-
+        # -------------------------
+        # REWARD PER ASSET
+        # -------------------------
         rewards_all_assets = []
 
         for asset_idx, sym in enumerate(ASSETS):
             close_idx = self.input_features.index(f"close_{sym}")
 
             rewards_asset = self.compute_reward_multi(
-                actual_prices=y,                
-                actions=actions[:, asset_idx],   
-                delta_pred=delta_pred[:, asset_idx],
+                actual_prices=y,
+                actions=actions[:, asset_idx],       # [B]
+                delta_pred=delta_pred[:, asset_idx], # [B, 2]
                 asset_idx=asset_idx,
                 close_idx=close_idx,
-            ) 
+            )
 
             rewards_all_assets.append(rewards_asset)
 
-        rewards_all_assets = torch.stack(rewards_all_assets, dim=1) 
-        rewards_shaped = rewards_all_assets.mean(dim=1)             
+        rewards_all_assets = torch.stack(rewards_all_assets, dim=1)  # [B, 4]
+        rewards_shaped = rewards_all_assets.mean(dim=1)              # [B]
 
- 
+        # -------------------------
+        # BASELINE + ADVANTAGE
+        # -------------------------
         if not hasattr(self, "reward_baseline"):
             self.reward_baseline = rewards_shaped.mean().detach()
         else:
@@ -1108,24 +1115,33 @@ class HybridForecasterD(pl.LightningModule):
                 0.99 * self.reward_baseline + 0.01 * rewards_shaped.mean().detach()
             )
 
-        advantages = rewards_shaped - self.reward_baseline 
+        advantages = rewards_shaped - self.reward_baseline  # [B]
 
-
-
+        # -------------------------
+        # RL LOSS
+        # -------------------------
+        # policy_probs: [B, 4, 3]
+        # actions:      [B, 4]
         chosen_action_probs = policy_probs.gather(
             2, actions.unsqueeze(-1)
-        ).squeeze(-1)  
+        ).squeeze(-1)  # [B, 4]
 
-
-        chosen_action_probs = chosen_action_probs.mean(dim=1)  
+        # average across assets
+        chosen_action_probs = chosen_action_probs.mean(dim=1)  # [B]
 
         rl_loss = -(advantages.detach() * torch.log(chosen_action_probs.clamp(min=1e-8))).mean()
 
+        # -------------------------
+        # TOTAL LOSS
+        # -------------------------
         sup_weight = 1.0 if is_supervised else 0.2
         rl_weight  = self.rl_weight if not is_supervised else 0.2 * self.rl_weight
 
         total_loss = sup_weight * price_loss + rl_weight * rl_loss
 
+        # -------------------------
+        # LOGGING
+        # -------------------------
         self.log("sup/price_loss", price_loss, prog_bar=True, on_step=True, on_epoch=True)
         self.log("rl/loss", rl_loss, on_step=True, on_epoch=True)
         self.log("rl/avg_reward", rewards_shaped.mean(), prog_bar=True, on_step=True, on_epoch=True)
@@ -1134,70 +1150,87 @@ class HybridForecasterD(pl.LightningModule):
 
 
     def validation_step(self, batch, batch_idx):
-        x = batch["inputs"].to(self.device)  
-        y = batch["targets"].to(self.device)   
+        x = batch["inputs"].to(self.device)
+        y = batch["targets"].to(self.device)
 
-        pred, policy_probs = self(x)           
+        out = self(x)
+        price_pred    = out["prices"]        # [B, 4]
+        delta_pred    = out["deltas"]        # [B, 4, 2]
+        strength_pred = out["strengths"]     # [B, 4]
+        policy_probs  = out["policy_probs"]  # [B, 4, 3]
 
-        price_pred    = pred[:, :, 0]         
-        delta_pred    = pred[:, :, 1]          
-        strength_pred = pred[:, :, 2]      
-
-
+        # -------------------------
+        # PRICE LOSS
+        # -------------------------
         price_loss = 0.0
         for asset_idx, sym in enumerate(ASSETS):
             close_idx = self.input_features.index(f"close_{sym}")
-            target_close = y[:, -1, close_idx]          
-            pred_close   = price_pred[:, asset_idx]    
+            target_close = y[:, -1, close_idx]          # [B]
+            pred_close   = price_pred[:, asset_idx]     # [B]
             price_loss += F.smooth_l1_loss(pred_close, target_close)
 
         price_loss /= len(ASSETS)
 
-        actions = torch.argmax(policy_probs, dim=-1)    
+        # -------------------------
+        # GREEDY ACTIONS
+        # -------------------------
+        # policy_probs: [B, 4, 3]
+        actions = torch.argmax(policy_probs, dim=-1)  # [B, 4]
 
+        # -------------------------
+        # REWARD PER ASSET
+        # -------------------------
         rewards_all_assets = []
 
         for asset_idx, sym in enumerate(ASSETS):
             close_idx = self.input_features.index(f"close_{sym}")
 
             rewards_asset = self.compute_reward_multi(
-                actual_prices=y,                   
-                actions=actions[:, asset_idx],      
-                delta_pred=delta_pred[:, asset_idx], 
+                actual_prices=y,
+                actions=actions[:, asset_idx],        # [B]
+                delta_pred=delta_pred[:, asset_idx],  # [B, 2]
                 asset_idx=asset_idx,
                 close_idx=close_idx,
-            )  
+            )
 
             rewards_all_assets.append(rewards_asset)
 
-        rewards_all_assets = torch.stack(rewards_all_assets, dim=1) 
-        rewards_portfolio = rewards_all_assets.mean(dim=1)          
+        rewards_all_assets = torch.stack(rewards_all_assets, dim=1)  # [B, 4]
+        rewards_portfolio = rewards_all_assets.mean(dim=1)           # [B]
 
+        # -------------------------
+        # RL LOSS (evaluation only)
+        # -------------------------
         chosen_action_probs = policy_probs.gather(
             2, actions.unsqueeze(-1)
-        ).squeeze(-1) 
+        ).squeeze(-1)  # [B, 4]
 
-        chosen_action_probs = chosen_action_probs.mean(dim=1) 
+        chosen_action_probs = chosen_action_probs.mean(dim=1)  # [B]
 
         val_rl_loss = -(rewards_portfolio * torch.log(chosen_action_probs.clamp(min=1e-8))).mean()
 
+        # -------------------------
+        # NORMALIZED REWARD
+        # -------------------------
         if rewards_portfolio.numel() > 1:
             std = rewards_portfolio.std(unbiased=False).clamp(min=1e-8)
             val_avg_reward_norm = (rewards_portfolio.mean() / std).detach()
         else:
             val_avg_reward_norm = rewards_portfolio.mean().detach()
 
-
+        # -------------------------
+        # LOGGING
+        # -------------------------
         self.log("val/sup/price_loss", price_loss, prog_bar=True, on_epoch=True)
         self.log("val/rl/loss", val_rl_loss, on_epoch=True)
         self.log("val/rl/avg_reward", rewards_portfolio.mean(), prog_bar=True, on_epoch=True)
         self.log("val/rl/avg_reward_norm", val_avg_reward_norm, prog_bar=True, on_epoch=True)
 
-
+        # Per‑asset reward logs
         for i, sym in enumerate(ASSETS):
             self.log(f"val/rl/reward_{sym}", rewards_all_assets[:, i].mean(), on_epoch=True)
 
-
+        # Action distribution
         self.log("val/rl/action_hold", (actions == 0).float().mean(), on_epoch=True)
         self.log("val/rl/action_sell", (actions == 1).float().mean(), on_epoch=True)
         self.log("val/rl/action_buy",  (actions == 2).float().mean(), on_epoch=True)
@@ -1358,177 +1391,177 @@ class HybridForecasterD(pl.LightningModule):
                 f"🚀 Beginning training — {self.num_batches} batches per epoch."
             )
 
-def on_train_epoch_start(self):
-    import numpy as np
-
-    self.supervised_batch_count = 0
-    self.rl_batch_count = 0
-    self.epoch_batch_index = 0
-
-    val_reward_raw = self.trainer.callback_metrics.get("val/epoch_reward_raw", None)
-    if val_reward_raw is not None:
-        val_reward_raw = float(val_reward_raw)
-
-    prev_val_reward = getattr(self, "prev_val_reward", None)
-
-    rl_weight, sched_prob, sup_batches = self.loss_scheduler.update(
-        self.current_epoch,
-        val_loss=val_reward_raw
-    )
-
-    delta_corr = getattr(self, "delta_corr_last_portfolio", None)
-
-    if delta_corr is not None:
-        if delta_corr < 0.05:
-            rl_weight *= 0.25
-        elif delta_corr > 0.10:
-            rl_weight *= 1.25
-
-    self.rl_weight = rl_weight
-    self.sched_sampling_prob = sched_prob
-
-    train_loader = self.trainer.datamodule.train_dataloader()
-    num_batches = len(train_loader)
-    self.num_batches = num_batches
-
-    num_supervised = int(np.clip(sup_batches, 1, max(1, num_batches - 1)))
-    chosen = np.random.choice(num_batches, num_supervised, replace=False)
-    mask = np.zeros(num_batches, dtype=bool)
-    mask[chosen] = True
-
-    cycle_length = 6
-    phase = self.current_epoch % cycle_length
-    phase_name = "mixed"
-
-    if phase in [0, 1]:
-        mask[:] = True
-        phase_name = "compass"
-
-    elif phase in [2, 3, 4]:
-        phase_name = "mixed"
-
-    else:
-        if delta_corr is not None and delta_corr > 0.1:
-            num_supervised = int(self.num_batches * 0.3)
-            chosen = np.random.choice(self.num_batches, num_supervised, replace=False)
-            mask = np.zeros(self.num_batches, dtype=bool)
-            mask[chosen] = True
-            phase_name = "rl_burst"
-        else:
-            mask[:] = True
-            phase_name = "compass_recovery"
-
-    self.supervised_mask = mask
-    self.supervised_batches_per_epoch = mask.sum()
-
-
-    recovery_active = False
-
-    if getattr(self, "in_recovery", False):
-        self.supervised_mask[:] = True
-        self.in_recovery = False
-        recovery_active = True
-
-    elif delta_corr is not None and delta_corr < 0.05:
-        self.supervised_mask[:] = True
-        self.in_recovery = True
-        recovery_active = True
-
-
-    MIN_SUP_RATIO = self.reward_cfg.get("min_supervised_ratio", 0.10)
-    min_sup_batches = max(1, int(self.num_batches * MIN_SUP_RATIO))
-
-    if self.supervised_batches_per_epoch < min_sup_batches:
-        additional = min_sup_batches - self.supervised_batches_per_epoch
-        available = np.where(~self.supervised_mask)[0]
-
-        if len(available) > 0:
-            chosen_extra = np.random.choice(available, additional, replace=False)
-            self.supervised_mask[chosen_extra] = True
-            self.supervised_batches_per_epoch = self.supervised_mask.sum()
-
-    self.log("rl_weight", rl_weight, prog_bar=True)
-    self.log("sched_sampling_prob", sched_prob, prog_bar=True)
-    self.log("supervised_batches_target", sup_batches)
-    self.log("supervised_batches_planned", self.supervised_batches_per_epoch)
-    self.log("rl/batches_planned", num_batches - self.supervised_batches_per_epoch)
-    self.log("rl/recovery_active", float(recovery_active))
-
-    phase_map = {"compass": 0, "mixed": 1, "rl_burst": 2, "compass_recovery": 3}
-    self.log("train/phase_code", phase_map[phase_name])
-    self.log("train/is_compass", float(phase_name == "compass"))
-    self.log("train/is_mixed", float(phase_name == "mixed"))
-    self.log("train/is_rl_burst", float(phase_name == "rl_burst"))
-    self.log("train/is_recovery", float(phase_name == "compass_recovery"))
-
-    self.prev_val_reward = val_reward_raw
-    self.phase_name = phase_name
-    self.phase_code = phase_map[phase_name]
-    def on_train_epoch_end(self):
-        sup_count = getattr(self, "supervised_batch_count", 0)
-        rl_count  = getattr(self, "rl_batch_count", 0)
-        total     = sup_count + rl_count
-
-
-        if total == 0 or getattr(self.trainer, "sanity_checking", False):
-            return
-
-        sup_pct = sup_count / total * 100.0
-        rl_pct  = rl_count  / total * 100.0
-
-        hold_count = getattr(self, "epoch_hold_count", 0)
-        sell_count = getattr(self, "epoch_sell_count", 0)
-        buy_count  = getattr(self, "epoch_buy_count", 0)
-
-        action_total = hold_count + sell_count + buy_count
-        if action_total > 0:
-            hold_pct = hold_count / action_total * 100.0
-            sell_pct = sell_count / action_total * 100.0
-            buy_pct  = buy_count  / action_total * 100.0
-        else:
-            hold_pct = sell_pct = buy_pct = 0.0
-
-        val_reward_raw = self.trainer.callback_metrics.get("val/epoch_reward_raw")
-        if val_reward_raw is not None:
-            
-            pass
-
-        if hasattr(self, "epoch_delta_corrs") and self.epoch_delta_corrs:
-            avg_corr = sum(self.epoch_delta_corrs) / len(self.epoch_delta_corrs)
-            self.delta_corr_last_portfolio = avg_corr
-
-            self.epoch_delta_corrs = []
-
-
-        scheds = self.lr_schedulers()
-
-        if isinstance(scheds, list):
-            for sched in scheds:
-                if isinstance(sched, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                    metric = float(val_reward_raw) if val_reward_raw is not None else None
-                    if metric is not None:
-                        sched.step(metric)
-                else:
-                    sched.step()
-
-            current_lr = scheds[0].optimizer.param_groups[0]["lr"]
-        else:
-
-            if isinstance(scheds, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                metric = float(val_reward_raw) if val_reward_raw is not None else None
-                if metric is not None:
-                    scheds.step(metric)
-            else:
-                scheds.step()
-
-            current_lr = scheds.optimizer.param_groups[0]["lr"]
-
-        
-        self.log("lr", current_lr, prog_bar=True, on_epoch=True)
-
+    def on_train_epoch_start(self):
+        import numpy as np
 
         self.supervised_batch_count = 0
         self.rl_batch_count = 0
-        self.epoch_hold_count = 0
-        self.epoch_sell_count = 0
-        self.epoch_buy_count  = 0
+        self.epoch_batch_index = 0
+
+        val_reward_raw = self.trainer.callback_metrics.get("val/epoch_reward_raw", None)
+        if val_reward_raw is not None:
+            val_reward_raw = float(val_reward_raw)
+
+        prev_val_reward = getattr(self, "prev_val_reward", None)
+
+        rl_weight, sched_prob, sup_batches = self.loss_scheduler.update(
+            self.current_epoch,
+            val_loss=val_reward_raw
+        )
+
+        delta_corr = getattr(self, "delta_corr_last_portfolio", None)
+
+        if delta_corr is not None:
+            if delta_corr < 0.05:
+                rl_weight *= 0.25
+            elif delta_corr > 0.10:
+                rl_weight *= 1.25
+
+        self.rl_weight = rl_weight
+        self.sched_sampling_prob = sched_prob
+
+        train_loader = self.trainer.datamodule.train_dataloader()
+        num_batches = len(train_loader)
+        self.num_batches = num_batches
+
+        num_supervised = int(np.clip(sup_batches, 1, max(1, num_batches - 1)))
+        chosen = np.random.choice(num_batches, num_supervised, replace=False)
+        mask = np.zeros(num_batches, dtype=bool)
+        mask[chosen] = True
+
+        cycle_length = 6
+        phase = self.current_epoch % cycle_length
+        phase_name = "mixed"
+
+        if phase in [0, 1]:
+            mask[:] = True
+            phase_name = "compass"
+
+        elif phase in [2, 3, 4]:
+            phase_name = "mixed"
+
+        else:
+            if delta_corr is not None and delta_corr > 0.1:
+                num_supervised = int(self.num_batches * 0.3)
+                chosen = np.random.choice(self.num_batches, num_supervised, replace=False)
+                mask = np.zeros(self.num_batches, dtype=bool)
+                mask[chosen] = True
+                phase_name = "rl_burst"
+            else:
+                mask[:] = True
+                phase_name = "compass_recovery"
+
+        self.supervised_mask = mask
+        self.supervised_batches_per_epoch = mask.sum()
+
+
+        recovery_active = False
+
+        if getattr(self, "in_recovery", False):
+            self.supervised_mask[:] = True
+            self.in_recovery = False
+            recovery_active = True
+
+        elif delta_corr is not None and delta_corr < 0.05:
+            self.supervised_mask[:] = True
+            self.in_recovery = True
+            recovery_active = True
+
+
+        MIN_SUP_RATIO = self.reward_cfg.get("min_supervised_ratio", 0.10)
+        min_sup_batches = max(1, int(self.num_batches * MIN_SUP_RATIO))
+
+        if self.supervised_batches_per_epoch < min_sup_batches:
+            additional = min_sup_batches - self.supervised_batches_per_epoch
+            available = np.where(~self.supervised_mask)[0]
+
+            if len(available) > 0:
+                chosen_extra = np.random.choice(available, additional, replace=False)
+                self.supervised_mask[chosen_extra] = True
+                self.supervised_batches_per_epoch = self.supervised_mask.sum()
+
+        self.log("rl_weight", rl_weight, prog_bar=True)
+        self.log("sched_sampling_prob", sched_prob, prog_bar=True)
+        self.log("supervised_batches_target", sup_batches)
+        self.log("supervised_batches_planned", self.supervised_batches_per_epoch)
+        self.log("rl/batches_planned", num_batches - self.supervised_batches_per_epoch)
+        self.log("rl/recovery_active", float(recovery_active))
+
+        phase_map = {"compass": 0, "mixed": 1, "rl_burst": 2, "compass_recovery": 3}
+        self.log("train/phase_code", phase_map[phase_name])
+        self.log("train/is_compass", float(phase_name == "compass"))
+        self.log("train/is_mixed", float(phase_name == "mixed"))
+        self.log("train/is_rl_burst", float(phase_name == "rl_burst"))
+        self.log("train/is_recovery", float(phase_name == "compass_recovery"))
+
+        self.prev_val_reward = val_reward_raw
+        self.phase_name = phase_name
+        self.phase_code = phase_map[phase_name]
+        def on_train_epoch_end(self):
+            sup_count = getattr(self, "supervised_batch_count", 0)
+            rl_count  = getattr(self, "rl_batch_count", 0)
+            total     = sup_count + rl_count
+
+
+            if total == 0 or getattr(self.trainer, "sanity_checking", False):
+                return
+
+            sup_pct = sup_count / total * 100.0
+            rl_pct  = rl_count  / total * 100.0
+
+            hold_count = getattr(self, "epoch_hold_count", 0)
+            sell_count = getattr(self, "epoch_sell_count", 0)
+            buy_count  = getattr(self, "epoch_buy_count", 0)
+
+            action_total = hold_count + sell_count + buy_count
+            if action_total > 0:
+                hold_pct = hold_count / action_total * 100.0
+                sell_pct = sell_count / action_total * 100.0
+                buy_pct  = buy_count  / action_total * 100.0
+            else:
+                hold_pct = sell_pct = buy_pct = 0.0
+
+            val_reward_raw = self.trainer.callback_metrics.get("val/epoch_reward_raw")
+            if val_reward_raw is not None:
+            
+                pass
+
+            if hasattr(self, "epoch_delta_corrs") and self.epoch_delta_corrs:
+                avg_corr = sum(self.epoch_delta_corrs) / len(self.epoch_delta_corrs)
+                self.delta_corr_last_portfolio = avg_corr
+
+                self.epoch_delta_corrs = []
+
+
+            scheds = self.lr_schedulers()
+
+            if isinstance(scheds, list):
+                for sched in scheds:
+                    if isinstance(sched, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                        metric = float(val_reward_raw) if val_reward_raw is not None else None
+                        if metric is not None:
+                            sched.step(metric)
+                    else:
+                        sched.step()
+
+                current_lr = scheds[0].optimizer.param_groups[0]["lr"]
+            else:
+
+                if isinstance(scheds, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                    metric = float(val_reward_raw) if val_reward_raw is not None else None
+                    if metric is not None:
+                        scheds.step(metric)
+                else:
+                    scheds.step()
+
+                current_lr = scheds.optimizer.param_groups[0]["lr"]
+
+        
+            self.log("lr", current_lr, prog_bar=True, on_epoch=True)
+
+
+            self.supervised_batch_count = 0
+            self.rl_batch_count = 0
+            self.epoch_hold_count = 0
+            self.epoch_sell_count = 0
+            self.epoch_buy_count  = 0

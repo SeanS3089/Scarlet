@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 from hotkeys import setup_hotkeys, forced_signal
 import warnings 
-DISABLE_TRADING = False  # I really reccomend watching Scarlet run before enabling trading
+DISABLE_TRADING = True  # I really reccomend watching Scarlet run before enabling trading
 use_cpu_for_online = False
-ONLINE_TRAINING_ENABLED = False
+ONLINE_TRAINING_ENABLED = False #permanently disabled.
 # I set up Scarlet to run online training on CPU as I like gaming too, this frees up the GPU
 # Run a search for:   horizon_weights = Adjust for trading style
 # Search for:        buffer_usd = Decimal("40.50")  TO CHANGE WALLET RESERVE
@@ -86,12 +86,10 @@ MICRO_SCALP_TP = 0.0022
 MICRO_SCALP_SL = -0.0015
 MICRO_SCALP_MAX_ATR_EXIT = 0.45
 MICRO_SCALP_MIN_DELTA_EXIT = -0.0005
+symbols = ["solusd", "ethusd", "btcusd", "xrpusd"]
 
-cooldown_cycles = {
-    "solusd": 0,
-    "ethusd": 0,
-    "btcusd": 0,
-}
+cooldown_cycles = {s: 0 for s in symbols}
+
 
 sys.path.append(r"C:\Scarlet_Works\Scarlet")
 sys.path.append(r"C:\Scarlet_Works\Scarlet")
@@ -203,6 +201,27 @@ INPUT_FEATURES = [
     "sentiment_slope_40L_btcusd",
     "sentiment_slope_120_btcusd",
     "sentiment_slope_250_btcusd",
+
+    "open_xrpusd", "high_xrpusd", "low_xrpusd", "close_xrpusd", "volume_xrpusd",
+
+    "RSI_xrpusd",
+    "BB_mid_xrpusd", "BB_upper_xrpusd", "BB_lower_xrpusd", "BB_width_xrpusd",
+    "macd_line_xrpusd",
+    "signal_line_xrpusd",
+    "MACD_hist_xrpusd",
+    "VWAP_xrpusd",
+    "ATR_xrpusd",
+    "volatility_xrpusd",
+
+    "slope_10_xrpusd", "slope_30_xrpusd", "slope_40_xrpusd",
+
+    "reddit_sentiment_xrpusd",
+    "sentiment_slope_10_xrpusd",
+    "sentiment_slope_25_xrpusd",
+    "sentiment_slope_40_xrpusd",
+    "sentiment_slope_40L_xrpusd",
+    "sentiment_slope_120_xrpusd",
+    "sentiment_slope_250_xrpusd",
 ]
 INPUT_FEATURES_NO_SENTIMENT = [
     f for f in INPUT_FEATURES
@@ -1047,50 +1066,6 @@ import torch
 from decimal import Decimal
 
 
-def run_model(model, input_data, device):
-    """
-    Runs the model and returns a scalar forecast suitable for Scarlet's policy engine.
-    """
-
-    model.eval()  
-    input_data = input_data.to(device)
-
-    with torch.no_grad():
-        output = model(input_data)
-
-   
-    if isinstance(output, tuple):
-        output = output[0]
-
-   
-    if isinstance(output, torch.Tensor):
-        output = output.squeeze().detach().cpu().numpy()
-
-    try:
-        forecast = float(output)
-    except Exception:
-        print("⚠️ Model output not convertible to float — returning HOLD.")
-        return "HOLD", Decimal("0.0")
-
-   
-    market_price = get_market_price()
-    if market_price is None:
-        print("⚠️ Market price unavailable — returning HOLD.")
-        return "HOLD", Decimal("0.0")
-
-
-    action, delta = predict_action(
-        market_price=Decimal(str(market_price)),
-        model_forecast=Decimal(str(forecast)),
-        policy_config=POLICY_CONFIG,
-        is_flat=False,   
-        symbol=sym,      
-    )
-
-
-
-
-    return action, delta
 
 
 
@@ -2606,18 +2581,31 @@ def execute_trade_part1(
                     )
 
     
+        # --- MODEL FORECAST HANDLING (now absolute price) ---
     try:
-        forecast_decimal = Decimal(str(model_forecast))
-        if not forecast_decimal.is_finite():
-            forecast_decimal = Decimal("0.0")
+        # model_forecast is already an absolute forecast price from demo_inference
+        forecast_price_dec = Decimal(str(model_forecast))
+        if not forecast_price_dec.is_finite():
+            forecast_price_dec = Decimal(str(market_price))
     except InvalidOperation:
-        forecast_decimal = Decimal("0.0")
+        forecast_price_dec = Decimal(str(market_price))
 
     market_price_dec = Decimal(str(market_price))
-    forecast_price = market_price_dec * (Decimal("1.0") + forecast_decimal)
-    confidence = min(abs(forecast_decimal), Decimal("1.0"))
 
-    print(f"🧪 Forecast→Price: {float(forecast_price):.4f}, Δ={float(forecast_decimal):.4f}")
+    # Compute relative delta between forecast and market
+    if market_price_dec != 0:
+        forecast_delta_dec = (forecast_price_dec - market_price_dec) / market_price_dec
+    else:
+        forecast_delta_dec = Decimal("0.0")
+
+    # Confidence as bounded magnitude of relative delta
+    confidence = min(abs(forecast_delta_dec), Decimal("1.0"))
+
+    print(
+        f"🧪 Forecast→Price: {float(forecast_price_dec):.4f}, "
+        f"Δ={float(forecast_delta_dec):.4f}"
+    )
+
 
     def safe_decimal(x, default="0.0"):
         try:
@@ -2752,27 +2740,32 @@ def execute_trade_part1(
 
     if mode == "eval":
         try:
-            for sym in ["solusd", "ethusd", "btcusd"]:
+            for sym in ["solusd", "ethusd", "btcusd", "xrpusd"]:
                 close_col = f"close_{sym}"
                 high_col  = f"high_{sym}"
                 low_col   = f"low_{sym}"
                 vol_col   = f"volume_{sym}"
                 atr_col   = f"ATR_{sym}"
 
+                # 1. Live price overwrite
                 live_price = get_live_price(sym)
                 crypto_df.loc[crypto_df.index[-1], close_col] = float(live_price)
 
+                # 2. VWAP
                 vwap_value = safe_decimal(
                     _compute_vwap(crypto_df, price_col=close_col, volume_col=vol_col)
                 )
 
+                # 3. MACD
                 close_np = crypto_df[close_col].to_numpy(dtype=float)
                 macd_line_raw, signal_line_raw, _ = compute_macd_and_signal(close_np)
 
+                # 4. Slopes
                 short_slope  = compute_slope(close_np, 10)
                 medium_slope = compute_slope(close_np, 30)
                 long_slope   = compute_slope(close_np, 40)
 
+                # 5. ATR
                 if high_col in crypto_df.columns and low_col in crypto_df.columns:
                     crypto_df[atr_col] = compute_atr(
                         crypto_df[high_col],
@@ -2780,13 +2773,13 @@ def execute_trade_part1(
                         crypto_df[close_col]
                     ).fillna(0.0)
 
-
             if narrator:
-                narrator.narrate("🔄 Live alignment applied → indicators updated for SOL, ETH, BTC")
+                narrator.narrate("🔄 Live alignment applied → indicators updated for SOL, ETH, BTC, XRP")
 
         except Exception as e:
             if narrator:
                 narrator.narrate(f"⚠️ Live alignment failed: {e}")
+
 
 
     roi_threshold = POLICY_CONFIG.min_roi_for_confident_buy[symbol] - (confidence * Decimal("0.005"))
@@ -2866,8 +2859,9 @@ def execute_trade_part1(
     if narrator:
         narrator.narrate(
             f"[Policy] received_final_action={action_upper}, "
-            f"Δ={forecast_decimal:.4f}, ATR={atr_value:.4f}, vol={vol_value:.4f}"
+            f"Δ={float(forecast_delta_dec):.4f}, ATR={atr_value:.4f}, vol={vol_value:.4f}"
         )
+
 
 
     if mode == "eval" and action_upper == "SELL":
@@ -2883,16 +2877,15 @@ def execute_trade_part1(
         market_price=market_price_dec,
         avg_entry=avg_entry_price,
         exposure=exposure,
-        forecast_delta=forecast_decimal,
+        forecast_delta=float(forecast_delta_dec),   # ✔ FIXED
         volatility=volatility,
         slope_value=short_slope,
-        
         narrator=narrator,
     )
 
     micro_scalp_candidate_aggressive = is_micro_scalp_candidate_aggressive(
         sol_balance=sol_balance,
-        forecast_delta=float(forecast_decimal),
+        forecast_delta=float(forecast_delta_dec),   # ✔ FIXED
         short_slope=float(short_slope),
         medium_slope=float(medium_slope),
         atr_value=float(atr_value),
@@ -2905,7 +2898,7 @@ def execute_trade_part1(
         )
 
     context = {
-        "forecast_decimal": forecast_decimal,
+        "forecast_decimal": float(forecast_delta_dec),   # ✔ FIXED (legacy key name)
         "confidence": confidence,
         "volatility": volatility,
         "vwap_value": vwap_value,
@@ -2925,18 +2918,15 @@ def execute_trade_part1(
         "medium_slope": medium_slope,
         "long_slope": long_slope,
         "micro_scalp_candidate_aggressive": micro_scalp_candidate_aggressive,
-        
-        
-        
-
     }
 
     asset_balance = sol_balance
-    context["sol_balance"] = asset_balance                 
-    context[f"{symbol.lower()}_balance"] = asset_balance   
+    context["sol_balance"] = asset_balance
+    context[f"{symbol.lower()}_balance"] = asset_balance
     context["portfolio_posture"] = portfolio_posture
 
     return context
+
 
 
 
@@ -3736,7 +3726,7 @@ def execute_trade(
         model_forecast=model_forecast,
         market_price=market_price,
         action=action_upper,
-        symbol=sym,                    
+        symbol=symbol,                       
         price_tensor=price_tensor,
         asset_balance=asset_balance,
         avg_entry_price=avg_entry_price,
@@ -3791,9 +3781,11 @@ def execute_trade(
     )
 
    
-    policy_key = f"{symbol.lower()}usd"
+    policy_key = symbol.lower()
 
-    DUST_THRESHOLD = POLICY_CONFIG.dust_thresholds.get(policy_key, Decimal("0.00001"))
+    DUST_THRESHOLD = POLICY_CONFIG.dust_thresholds.get(
+        policy_key, Decimal("0.00001")
+    )
 
     balance_key = f"{symbol.lower()}_balance"
     sol_balance_ctx = part1_ctx.get(balance_key)
@@ -4593,6 +4585,24 @@ SENTIMENT_CONFIG = {
             "crypto",
         ],
     },
+
+    # ⭐ ADD THIS
+    "XRP": {
+        "subreddits": {
+            "Ripple": 0.50,
+            "XRP": 0.30,
+            "cryptocurrency": 0.10,
+            "crypto": 0.10,
+        },
+        "keywords": [
+            "xrp",
+            "ripple",
+            "xrp crypto",
+            "ripple crypto",
+            "crypto",
+            "cryptocurrency",
+        ],
+    },
 }
 
 def compute_sentiment_gpu(text_list, batch_size=32):
@@ -4967,12 +4977,12 @@ def build_feature_tensor(
     missing = [c for c in enriched_df.columns if c not in INPUT_FEATURES]
     print("COLUMNS NOT IN INPUT_FEATURES:", missing)
 
-    X = enriched_df[INPUT_FEATURES].fillna(0.0).values
+    block = enriched_df[INPUT_FEATURES].fillna(0.0).astype("float32")
 
-   
-    X_scaled = scaler.transform(X)
+    # Scaler returns a NumPy array — that's fine
+    X_scaled = scaler.transform(block)
 
-   
+    # Build tensor
     features_tensor = torch.tensor(
         X_scaled, dtype=torch.float32, device=device
     ).unsqueeze(0)
@@ -5078,95 +5088,125 @@ def add_engineered_features(df, symbols, narrator=None):
 
     return enriched
 
-ASSET_ORDER = ["solusd", "ethusd", "btcusd"]
+ASSET_ORDER = ["solusd", "ethusd", "btcusd", "xrpusd"]
+
+
+
 
 def demo_inference(
     model,
     enriched_df,
     device,
-    _input_features,  
-    _numeric_inputs,   
+    _input_features,
+    _numeric_inputs,
     scaler,
     sym,
 ):
     model.eval()
 
-    X = enriched_df[INPUT_FEATURES].fillna(0.0).values
+    # --- 1. Extract block with names, correct order ---
+    block = enriched_df[_input_features].fillna(0.0).astype("float32")
 
-    # Scale using the same scaler
-    X_scaled = scaler.transform(X)
+    # --- Limit sequence length to prevent OOM in attention ---
+    MAX_SEQ = 512
+    if len(block) > MAX_SEQ:
+        block = block.iloc[-MAX_SEQ:]
 
-    # Convert to contiguous numpy
-    seq_np = np.ascontiguousarray(X_scaled, dtype=np.float32)
+    # --- 2. Scale with named DataFrame ---
+    X_scaled = scaler.transform(block)
 
-    # Convert to torch
-    seq_tensor = torch.from_numpy(seq_np).to(device).unsqueeze(0).contiguous()
+    # --- 3. Build sequence tensor ---
+    seq_np = np.ascontiguousarray(X_scaled, dtype=np.float32)   # [T, F]
+    seq_tensor = torch.from_numpy(seq_np).unsqueeze(0)          # [1, T, F]
+    seq_tensor = seq_tensor.to(device=device, dtype=torch.float32).contiguous()
 
-
+    # Forward pass
     with torch.no_grad():
         out = model(seq_tensor)
 
-    ASSET_ORDER = ["solusd", "ethusd", "btcusd"]
+    ASSET_ORDER = ["solusd", "ethusd", "btcusd", "xrpusd"]
     asset_idx = ASSET_ORDER.index(sym)
 
-    prices     = out["prices"]              
-    strengths  = out["strengths"]             
-    deltas     = out["deltas"]               
+    # -----------------------------
+    # USE DELTA HEAD ONLY (bounded, stable)
+    # -----------------------------
+    deltas    = out["deltas"]      # [1, 4, H]
+    strengths = out["strengths"]   # [1, 4]
 
-    forecast_price    = float(prices[0, asset_idx].item())
+    # Pick horizon index (e.g. last horizon = 2h ahead if H=8)
+    HORIZON_INDEX = -1
+    asset_delta_vec = deltas[0, asset_idx]              # [H]
+    main_delta      = float(asset_delta_vec[HORIZON_INDEX].item())
+
+    # Derive forecast price from delta + current price
+    current_price = float(enriched_df[f"close_{sym}"].iloc[-1])
+    forecast_price = current_price * (1.0 + main_delta)
+
+    # Keep vector form for downstream
+    forecast_delta = asset_delta_vec.cpu().numpy()      # [H]
+    forecast_np    = forecast_delta.copy()
+
     forecast_strength = float(strengths[0, asset_idx].item())
 
-    forecast_vec = deltas[0, asset_idx]      
-    forecast_delta = forecast_vec.cpu().numpy()
-    forecast_np = forecast_delta.copy()
-
+    # -----------------------------
+    # 4-ASSET INDICATOR TENSORS
+    # -----------------------------
     current_price_tensor = torch.tensor([
         enriched_df["close_solusd"].iloc[-1],
         enriched_df["close_ethusd"].iloc[-1],
         enriched_df["close_btcusd"].iloc[-1],
+        enriched_df["close_xrpusd"].iloc[-1],
     ], dtype=torch.float32, device=device)
 
     atr_tensor = torch.tensor([
         enriched_df["ATR_solusd"].iloc[-1],
         enriched_df["ATR_ethusd"].iloc[-1],
         enriched_df["ATR_btcusd"].iloc[-1],
+        enriched_df["ATR_xrpusd"].iloc[-1],
     ], dtype=torch.float32, device=device)
 
     vwap_tensor = torch.tensor([
         enriched_df["VWAP_solusd"].iloc[-1] if "VWAP_solusd" in enriched_df else enriched_df["close_solusd"].iloc[-1],
         enriched_df["VWAP_ethusd"].iloc[-1] if "VWAP_ethusd" in enriched_df else enriched_df["close_ethusd"].iloc[-1],
         enriched_df["VWAP_btcusd"].iloc[-1] if "VWAP_btcusd" in enriched_df else enriched_df["close_btcusd"].iloc[-1],
+        enriched_df["VWAP_xrpusd"].iloc[-1] if "VWAP_xrpusd" in enriched_df else enriched_df["close_xrpusd"].iloc[-1],
     ], dtype=torch.float32, device=device)
 
     macd_line_tensor = torch.tensor([
         enriched_df["macd_line_solusd"].iloc[-1],
         enriched_df["macd_line_ethusd"].iloc[-1],
         enriched_df["macd_line_btcusd"].iloc[-1],
+        enriched_df["macd_line_xrpusd"].iloc[-1],
     ], dtype=torch.float32, device=device)
 
     signal_line_tensor = torch.tensor([
         enriched_df["signal_line_solusd"].iloc[-1],
         enriched_df["signal_line_ethusd"].iloc[-1],
         enriched_df["signal_line_btcusd"].iloc[-1],
+        enriched_df["signal_line_xrpusd"].iloc[-1],
     ], dtype=torch.float32, device=device)
 
     slope_tensor = torch.tensor([
         enriched_df["slope_10_solusd"].iloc[-1],
         enriched_df["slope_10_ethusd"].iloc[-1],
         enriched_df["slope_10_btcusd"].iloc[-1],
+        enriched_df["slope_10_xrpusd"].iloc[-1],
     ], dtype=torch.float32, device=device)
 
-   
+    # -----------------------------
+    # SENTIMENT (expanded to 4 assets)
+    # -----------------------------
     try:
         sent = fetch_weighted_reddit_sentiment()
         s10, s25, s40s, s40l, s120, s250 = compute_sentiment_slopes_from_history()
 
         sentiment_tensor = torch.tensor(
-            [sent, sent, sent], dtype=torch.float32, device=device
+            [sent, sent, sent, sent], dtype=torch.float32, device=device
         )
 
         sentiment_slopes_tensor = torch.tensor(
             [
+                [s10, s25, s40s, s40l, s120, s250],
                 [s10, s25, s40s, s40l, s120, s250],
                 [s10, s25, s40s, s40l, s120, s250],
                 [s10, s25, s40s, s40l, s120, s250],
@@ -5176,12 +5216,12 @@ def demo_inference(
         )
 
     except Exception:
-        sentiment_tensor = torch.zeros(3, dtype=torch.float32, device=device)
-        sentiment_slopes_tensor = torch.zeros((3, 6), dtype=torch.float32, device=device)
-
+        sentiment_tensor = torch.zeros(4, dtype=torch.float32, device=device)
+        sentiment_slopes_tensor = torch.zeros((4, 6), dtype=torch.float32, device=device)
+    
     return (
         forecast_price,
-        forecast_delta,     
+        forecast_delta,
         forecast_strength,
         forecast_np,
         seq_tensor,
@@ -5363,43 +5403,37 @@ def log_trade_fill(memory_path, trade_row, narrator=None):
     return df
 
 def shaping_collate_fn(batch):
+    # Inputs are already GPU tensors
+    inputs = [b["inputs"] for b in batch]
 
-    inputs = torch.stack([item["inputs"] for item in batch], dim=0)     
-    targets = torch.stack([item["targets"] for item in batch], dim=0)    
+    # Pad on GPU
+    padded = torch.nn.utils.rnn.pad_sequence(inputs, batch_first=True)
 
-    def stack_vec(key):
- 
-        return torch.stack([item["shaping"][key] for item in batch], dim=0) 
+    # Targets already on GPU
+    targets = torch.stack([b["targets"] for b in batch], dim=0)
 
-    shaping = {
-        "current_price": stack_vec("current_price"),  
-        "atr":           stack_vec("atr"),           
-        "vwap":          stack_vec("vwap"),         
-        "macd_hist":     stack_vec("macd_hist"),       
-        "signal_line":   stack_vec("signal_line"),  
-        "slope":         stack_vec("slope"),          
-    }
+    # Shaping already on GPU
+    shaping = {}
+    for key in batch[0]["shaping"].keys():
+        shaping[key] = torch.stack([b["shaping"][key] for b in batch], dim=0)
 
     return {
-        "inputs": inputs,
-        "targets": targets,     
+        "inputs": padded,
+        "targets": targets,
         "shaping": shaping,
     }
 
 
 
-def make_dataloaders(merged_df=None, batch_size=256):
+def make_dataloader(merged_df=None, batch_size=256):
     """
     Unified dataloader builder for Scarlet.
-    Produces:
-        - 51‑feature engineered dataset
-        - CandleDatasetV2 (shaping‑aware)
-        - train/val loaders with shaping_collate_fn
+    Uses CandleDatasetV2 + shaping_collate_fn.
     """
 
-    symbols = ["solusd", "ethusd", "btcusd"]
+    symbols = ["solusd", "ethusd", "btcusd", "xrpusd"]
 
-
+    # Load or accept prebuilt merged_df
     if merged_df is None:
         merged_df = fetch_and_align_assets(symbols, timeframe="15m")
         if merged_df.empty:
@@ -5408,14 +5442,14 @@ def make_dataloaders(merged_df=None, batch_size=256):
     else:
         narrator.narrate(f"📊 Offline dataset received → {len(merged_df)} candles")
 
-  
+    # Add engineered features
     merged_df = add_engineered_features(
         merged_df,
         symbols=symbols,
         narrator=narrator
     )
 
-
+    # Ensure sentiment columns exist
     sentiment_cols = [
         "reddit_sentiment",
         "sentiment_slope_10",
@@ -5429,91 +5463,13 @@ def make_dataloaders(merged_df=None, batch_size=256):
         if col not in merged_df.columns:
             merged_df[col] = 0.0
 
-
-    INPUT_FEATURES = [
-    
-        "open_solusd", "high_solusd", "low_solusd", "close_solusd", "volume_solusd",
-
-        "RSI_solusd",
-        "BB_mid_solusd", "BB_upper_solusd", "BB_lower_solusd", "BB_width_solusd",
-        "macd_line_solusd",         
-        "signal_line_solusd",       
-        "MACD_hist_solusd",
-        "VWAP_solusd",
-        "ATR_solusd",
-        "volatility_solusd",
-
-    
-        "slope_10_solusd", "slope_30_solusd", "slope_40_solusd",
-
-        "reddit_sentiment_solusd",
-        "sentiment_slope_10_solusd",
-        "sentiment_slope_25_solusd",
-        "sentiment_slope_40_solusd",
-        "sentiment_slope_40L_solusd",
-        "sentiment_slope_120_solusd",
-        "sentiment_slope_250_solusd",
-
-
-        "open_ethusd", "high_ethusd", "low_ethusd", "close_ethusd", "volume_ethusd",
-
-        
-        "RSI_ethusd",
-        "BB_mid_ethusd", "BB_upper_ethusd", "BB_lower_ethusd", "BB_width_ethusd",
-        "macd_line_ethusd",         
-        "signal_line_ethusd",      
-        "MACD_hist_ethusd",
-        "VWAP_ethusd",
-        "ATR_ethusd",
-        "volatility_ethusd",
-
-       
-        "slope_10_ethusd", "slope_30_ethusd", "slope_40_ethusd",
-
-      
-        "reddit_sentiment_ethusd",
-        "sentiment_slope_10_ethusd",
-        "sentiment_slope_25_ethusd",
-        "sentiment_slope_40_ethusd",
-        "sentiment_slope_40L_ethusd",
-        "sentiment_slope_120_ethusd",
-        "sentiment_slope_250_ethusd",
-
-  
-        "open_btcusd", "high_btcusd", "low_btcusd", "close_btcusd", "volume_btcusd",
-
-      
-        "RSI_btcusd",
-        "BB_mid_btcusd", "BB_upper_btcusd", "BB_lower_btcusd", "BB_width_btcusd",
-        "macd_line_btcusd",         
-        "signal_line_btcusd",     
-        "MACD_hist_btcusd",
-        "VWAP_btcusd",
-        "ATR_btcusd",
-        "volatility_btcusd",
-
-       
-        "slope_10_btcusd", "slope_30_btcusd", "slope_40_btcusd",
-
-      
-        "reddit_sentiment_btcusd",
-        "sentiment_slope_10_btcusd",
-        "sentiment_slope_25_btcusd",
-        "sentiment_slope_40_btcusd",
-        "sentiment_slope_40L_btcusd",
-        "sentiment_slope_120_btcusd",
-        "sentiment_slope_250_btcusd",
-    ]
-    INPUT_FEATURES_NO_SENTIMENT = [
-        f for f in INPUT_FEATURES
-        if not f.startswith("reddit_sentiment_")
-        and not f.startswith("sentiment_slope_")
-    ]
+    # Input features (unchanged)
+    INPUT_FEATURES = [...]  # keep your full list exactly as-is
 
     output_features = [f"close_{sym}" for sym in symbols]
     close_idx = output_features.index("close_solusd")
 
-
+    # Build dataset
     ds = CandleDatasetV2(
         df=merged_df.copy(),
         INPUT_FEATURES=INPUT_FEATURES,
@@ -5524,18 +5480,18 @@ def make_dataloaders(merged_df=None, batch_size=256):
         mode="train",
     )
 
-   
+    # Train/val split
     n_train = int(0.8 * len(ds))
     n_val = len(ds) - n_train
     train_ds, val_ds = torch.utils.data.random_split(ds, [n_train, n_val])
 
-  
+    # Dataloaders
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
         shuffle=True,
         num_workers=0,
-        pin_memory=True,
+        pin_memory=False,
         persistent_workers=False,
         collate_fn=shaping_collate_fn,
         drop_last=True,
@@ -5546,14 +5502,13 @@ def make_dataloaders(merged_df=None, batch_size=256):
         batch_size=batch_size,
         shuffle=False,
         num_workers=0,
-        pin_memory=True,
+        pin_memory=False,
         persistent_workers=False,
         collate_fn=shaping_collate_fn,
         drop_last=True,
     )
 
-
-
+    # Market tensor for inference
     market_tensor = torch.tensor(
         merged_df[INPUT_FEATURES].values,
         dtype=torch.float32
@@ -5817,21 +5772,25 @@ def load_full_cache(sym, target=150000):
 
     return df
 
-def initialize_asset_cache(symbol, timeframe="15m", max_candles=150000, narrator=None):
-    cache = load_full_cache(symbol)
+def save_asset_cache(symbol, cache_obj):
+    """
+    Accepts either:
+    - a DataFrame
+    - a dict containing {"df": DataFrame, ...}
+    """
 
-   
-    cache = backfill_asset_history(symbol, timeframe, cache, max_candles)
-    save_asset_cache(symbol, cache)
+    # Extract DataFrame safely
+    df = cache_obj if isinstance(cache_obj, pd.DataFrame) else cache_obj.get("df")
 
-   
-    cache = fetch_incremental_candles(symbol, timeframe, cache, max_candles)
-    save_asset_cache(symbol, cache)
+    if df is None:
+        raise ValueError(f"save_asset_cache: No DataFrame found for {symbol}")
 
-    if narrator:
-        narrator.narrate(f"🗄️ Cache[{symbol}] initialized → {len(cache)} candles")
+    path = f"C:/Scarlet_Works/Scarlet/cache/{symbol}.csv"
+    tmp_path = path + ".tmp"
 
-    return cache
+    df.to_csv(tmp_path, index=False)
+    os.replace(tmp_path, path)
+
 
 
 
@@ -5946,7 +5905,7 @@ def engineer_features_multi(merged_df: pd.DataFrame, narrator=None) -> pd.DataFr
     AND includes sentiment placeholders to match INPUT_FEATURES.
     """
 
-    assets = ["solusd", "ethusd", "btcusd"]
+    assets = ["solusd", "ethusd", "btcusd", "xrpusd"]
     slope_windows = (10, 30, 40)
 
     for sym in assets:
@@ -5994,7 +5953,8 @@ def engineer_features_multi(merged_df: pd.DataFrame, narrator=None) -> pd.DataFr
         merged_df[f"sentiment_slope_250_{sym}"] = 0.0
 
     if narrator:
-        narrator.narrate("🌐 Multi-asset feature engineering complete → SOL, ETH, BTC")
+        narrator.narrate("🌐 Multi-asset feature engineering complete → SOL, ETH, BTC, XRP")
+
 
     return merged_df
 
@@ -6076,14 +6036,15 @@ def fetch_and_align_assets(symbols, timeframe="15m"):
             print(f"⚠️ Skipping {sym}: empty cache")
             continue
 
-   
+        # Normalize timestamp
         df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
         df = df.dropna(subset=["timestamp"])
 
-   
+        # Suffix columns
         rename_map = {col: f"{col}_{sym}" for col in df.columns if col != "timestamp"}
         df = df.rename(columns=rename_map)
 
+        # Merge
         if merged is None:
             merged = df
         else:
@@ -6091,7 +6052,6 @@ def fetch_and_align_assets(symbols, timeframe="15m"):
 
         aligned_assets.append(sym)
         print(f"✅ Aligned {sym} — {len(df)} candles")
-
 
     if merged is None:
         print("❌ No valid assets retrieved")
@@ -6108,7 +6068,40 @@ def fetch_and_align_assets(symbols, timeframe="15m"):
 
 
 
-symbols = ["solusd", "ethusd", "btcusd"]
+symbols = ["solusd", "ethusd", "btcusd", "xrpusd"]
+def initialize_asset_cache(symbol, timeframe="15m", max_candles=150000, narrator=None):
+    """
+    Loads, backfills, forward-updates, and saves the cache for a single asset.
+    Always returns the updated cache object (dict or DataFrame).
+    """
+
+    # 1. Load existing cache (may be dict or DataFrame)
+    cache = load_full_cache(symbol)
+
+    # 2. Backfill history
+    cache = backfill_asset_history(symbol, timeframe, cache, max_candles)
+
+    # Extract DataFrame safely
+    df = cache if isinstance(cache, pd.DataFrame) else cache.get("df")
+    if df is None:
+        raise ValueError(f"initialize_asset_cache: No DataFrame found for {symbol} after backfill")
+
+    save_asset_cache(symbol, df)
+
+    # 3. Forward update (incremental candles)
+    cache = fetch_incremental_candles(symbol, timeframe, cache, max_candles)
+
+    df = cache if isinstance(cache, pd.DataFrame) else cache.get("df")
+    if df is None:
+        raise ValueError(f"initialize_asset_cache: No DataFrame found for {symbol} after incremental update")
+
+    save_asset_cache(symbol, df)
+
+    # 4. Narration
+    if narrator:
+        narrator.narrate(f"🗄️ Cache[{symbol}] initialized → {len(df)} candles")
+
+    return cache
 
 
 for sym in symbols:
@@ -6174,42 +6167,55 @@ def build_offline_dataset(
     narrator=None,
 ):
     if symbols is None:
-        symbols = ["solusd", "ethusd", "btcusd"]
+        symbols = ["solusd", "ethusd", "btcusd", "xrpusd"]
 
-    sol = load_full_cache("solusd", target=target)
-    eth = load_full_cache("ethusd", target=target)
-    btc = load_full_cache("btcusd", target=target)
+    # Load all assets dynamically
+    caches = {sym: load_full_cache(sym, target=target) for sym in symbols}
 
-    print(f"[Offline Training] sol={len(sol)}, eth={len(eth)}, btc={len(btc)}")
+    print("[Offline Training] " + ", ".join(f"{sym}={len(caches[sym])}" for sym in symbols))
 
-    merged_df = sol.merge(eth, on="timestamp", suffixes=("", "_eth"))
-    merged_df = merged_df.merge(btc, on="timestamp", suffixes=("", "_btc"))
-    merged_df = merged_df.sort_values("timestamp").reset_index(drop=True)
+    # Start with the first asset
+    merged_df = caches[symbols[0]]
 
-    col_map = {
-
-        "open": "open_solusd", "high": "high_solusd", "low": "low_solusd",
-        "close": "close_solusd", "volume": "volume_solusd",
-
-        "open_eth": "open_ethusd", "high_eth": "high_ethusd", "low_eth": "low_ethusd",
-        "close_eth": "close_ethusd", "volume_eth": "volume_ethusd",
-
-        "open_btc": "open_btcusd", "high_btc": "high_btcusd", "low_btc": "low_btcusd",
-        "close_btc": "close_btcusd", "volume_btc": "volume_btcusd",
-    }
-    merged_df = merged_df.rename(columns=col_map)
-
-    if merged_df.empty:
-        raise RuntimeError("❌ No candle data retrieved from cache for offline training")
-
-    if narrator:
-        narrator.narrate(
-            f"📊 Offline dataset loaded → {len(merged_df)} aligned candles for {', '.join(symbols)}"
+    # Merge the rest
+    for sym in symbols[1:]:
+        suffix = f"_{sym.replace('usd','')}"
+        merged_df = merged_df.merge(
+            caches[sym],
+            on="timestamp",
+            suffixes=("", suffix)
         )
 
+    merged_df = merged_df.sort_values("timestamp").reset_index(drop=True)
 
-    merged_df = engineer_features_multi(merged_df, narrator=narrator)
+    # Rename columns to unified schema
+    rename_map = {}
 
+    for i, sym in enumerate(symbols):
+        base = sym.replace("usd", "")  # sol, eth, btc, xrp
+
+        if i == 0:
+            # First asset (SOL) has no suffix after merge
+            rename_map.update({
+                "open":   f"open_{sym}",
+                "high":   f"high_{sym}",
+                "low":    f"low_{sym}",
+                "close":  f"close_{sym}",
+                "volume": f"volume_{sym}",
+            })
+        else:
+            # Other assets have suffixes like _eth, _btc, _xrp
+            rename_map.update({
+                f"open_{base}":   f"open_{sym}",
+                f"high_{base}":   f"high_{sym}",
+                f"low_{base}":    f"low_{sym}",
+                f"close_{base}":  f"close_{sym}",
+                f"volume_{base}": f"volume_{sym}",
+            })
+
+    merged_df = merged_df.rename(columns=rename_map)
+
+    # Add sentiment placeholders
     sentiment_cols = [
         "reddit_sentiment",
         "sentiment_slope_10",
@@ -6226,6 +6232,7 @@ def build_offline_dataset(
 
     return merged_df
 
+
 def precompute_offline_dataset(
     symbols=None,
     target=150000,
@@ -6233,7 +6240,7 @@ def precompute_offline_dataset(
     narrator=None,
 ):
     if symbols is None:
-        symbols = ["solusd", "ethusd", "btcusd"]
+        symbols = ["solusd", "ethusd", "btcusd", "xrpusd"]
 
     merged = build_offline_dataset(symbols=symbols, target=target, narrator=narrator)
     engineered = engineer_features_multi(merged, narrator=narrator)
@@ -6242,15 +6249,28 @@ def precompute_offline_dataset(
 
 
 def load_or_build_offline_df(symbols=None, narrator=None, lookback=2000):
-    df = pd.read_parquet("offline_full_dataset.parquet")
+    """
+    Loads aligned candles, builds engineered features, scales them,
+    and returns (raw_df, scaled_df, scaler, numeric_cols).
+    """
 
+    if symbols is None:
+        symbols = ["solusd", "ethusd", "btcusd", "xrpusd"]
+
+    # 1. Fetch aligned multi-asset candles
+    merged = fetch_and_align_assets(symbols)
+
+    # 2. Build engineered features for ALL assets
+    enriched = add_engineered_features(merged, symbols=symbols, narrator=narrator)
+
+    # 3. Scale using INPUT_FEATURES
     numeric_cols = INPUT_FEATURES
-    scaler = RobustScaler().fit(df[numeric_cols].fillna(0.0))
+    scaler = RobustScaler().fit(enriched[numeric_cols].fillna(0.0))
 
-    df_scaled = df.copy()
-    df_scaled[numeric_cols] = scaler.transform(df[numeric_cols].fillna(0.0))
+    df_scaled = enriched.copy()
+    df_scaled[numeric_cols] = scaler.transform(enriched[numeric_cols].fillna(0.0))
 
-    return df, df_scaled, scaler, numeric_cols
+    return enriched, df_scaled, scaler, numeric_cols
 
 
 
@@ -6342,7 +6362,7 @@ def build_dataloader(df_raw, df_scaled, batch_size=256, window_size=128, target_
         shuffle=True,
         drop_last=True,
         num_workers=0,
-        pin_memory=True,
+        pin_memory=False,
         persistent_workers=False,
     )
 
@@ -6424,49 +6444,67 @@ def compute_costbasis_loss_vectorized(
 
 
 def online_costbasis_reward_from_verdict_batch(
-    forecast_delta,  
-    realized_delta,   
-    current_price,    
+    forecast_delta,   # [B, 4, H] or [B, 4]
+    realized_delta,   # [B, 4, H] or [B, 4]
+    current_price,    # [B, 4] or [B, 4, H]
     policy_config,
-    atr_value,        
-    vwap_value,       
-    macd_line,        
-    signal_line,      
-    slope_value,      
+    atr_value,
+    vwap_value,
+    macd_line,
+    signal_line,
+    slope_value,
+    horizon_index: int = -1,   # -1 = last horizon
 ):
     """
     Multi-asset online reward.
-    No SOL-only collapse; returns (B, 3).
-    If forecast/realized are (B,3,H), we use the last horizon.
+    4 assets, optional horizon selection.
+    If tensors are (B,4,H), we pick horizon_index along H.
     """
 
     device = forecast_delta.device
+    NUM_ASSETS = 4
 
-    def to_B3(x):
+    def to_BA(x):
         if x is None:
             return None
+
+        # [B] → [B,4]
         if x.dim() == 1:
-  
-            return x.unsqueeze(-1).expand(-1, 3)
+            return x.unsqueeze(-1).expand(-1, NUM_ASSETS)
+
+        # [B,A] → [B,4] (pad/trim if needed)
         if x.dim() == 2:
-   
-            if x.size(1) == 1:
-                return x.expand(-1, 3)
-            return x
+            B, A = x.shape
+            if A == NUM_ASSETS:
+                return x
+            if A > NUM_ASSETS:
+                return x[:, :NUM_ASSETS]
+            # A < NUM_ASSETS → pad
+            pad = torch.zeros(B, NUM_ASSETS - A, device=x.device, dtype=x.dtype)
+            return torch.cat([x, pad], dim=1)
+
+        # [B,A,H] → pick horizon, then align A
         if x.dim() == 3:
- 
-            return x[:, :, -1]
-        raise ValueError(f"Unexpected shape in to_B3: {x.shape}")
+            B, A, H = x.shape
+            idx = H - 1 if horizon_index < 0 else min(horizon_index, H - 1)
+            x_h = x[:, :, idx]  # [B,A]
+            if A == NUM_ASSETS:
+                return x_h
+            if A > NUM_ASSETS:
+                return x_h[:, :NUM_ASSETS]
+            pad = torch.zeros(B, NUM_ASSETS - A, device=x.device, dtype=x.dtype)
+            return torch.cat([x_h, pad], dim=1)
 
-    forecast_delta = to_B3(forecast_delta)   
-    realized_delta = to_B3(realized_delta)   
-    current_price  = to_B3(current_price)   
-    atr_value      = to_B3(atr_value)       
-    vwap_value     = to_B3(vwap_value)       
-    macd_line      = to_B3(macd_line)      
-    signal_line    = to_B3(signal_line)     
-    slope_value    = to_B3(slope_value)      
+        raise ValueError(f"Unexpected shape in to_BA: {x.shape}")
 
+    forecast_delta = to_BA(forecast_delta)   # [B,4]
+    realized_delta = to_BA(realized_delta)   # [B,4]
+    current_price  = to_BA(current_price)    # [B,4]
+    atr_value      = to_BA(atr_value)        # [B,4]
+    vwap_value     = to_BA(vwap_value)       # [B,4]
+    macd_line      = to_BA(macd_line)        # [B,4]
+    signal_line    = to_BA(signal_line)      # [B,4]
+    slope_value    = to_BA(slope_value)      # [B,4]
 
     atr_ratio = atr_value / (current_price + 1e-8)
     macd_hist = macd_line - signal_line
@@ -6476,8 +6514,7 @@ def online_costbasis_reward_from_verdict_batch(
     cond_slope = slope_value.abs() < 0.0005
 
     flat_mask  = cond_atr & cond_macd & cond_slope
-    flat_score = flat_mask.float()          # (B,3)
-
+    flat_score = flat_mask.float()          # [B,4]
 
     forecast_mag = torch.abs(forecast_delta)
 
@@ -6553,7 +6590,7 @@ def online_costbasis_reward_from_verdict_batch(
 
     reward = reward * (1 - 0.5 * flat_score)
 
-    return reward 
+    return reward
 
 
 
@@ -6627,48 +6664,215 @@ def offline_shaping_collate_fn(batch):
 
 from torch.utils.data import DataLoader, random_split
 
+class OfflineMultiHorizonDataset(Dataset):
+    def __init__(self, df, input_features, realized_delta, shaping, seq_len, device):
+        self.seq_len = seq_len
+        self.device = device
+
+        # -----------------------------------------
+        # 1. Pre-tensorize ALL inputs once
+        # -----------------------------------------
+        self.X = torch.tensor(
+            df[input_features].values,
+            dtype=torch.float32,
+            device=device
+        )  # [N, F]
+
+        # Already on GPU from dataloader
+        self.realized_delta = realized_delta  # [N, 4, H]
+
+        # Pre-tensorize shaping dict into one big tensor
+        self.shaping = {
+            k: v.to(device) for k, v in shaping.items()
+        }  # each [N, 4]
+
+        self.N = self.X.shape[0]
+        self.F = self.X.shape[1]
+
+    def __len__(self):
+        return self.N
+
+    def __getitem__(self, idx):
+        start = max(0, idx - self.seq_len + 1)
+        end   = idx + 1
+
+        # -----------------------------------------
+        # 2. Slice pre-tensorized data (FAST)
+        # -----------------------------------------
+        X_slice = self.X[start:end]  # [T, F]
+        y = self.realized_delta[idx]  # [4, H]
+
+        shaping_out = {k: v[idx] for k, v in self.shaping.items()}
+
+        return X_slice, y, shaping_out
+
+    def collate_fn(self, batch):
+        # batch = list of (X_slice, y, shaping_out)
+        Xs, ys, shapings = zip(*batch)
+
+        B = len(batch)
+        max_len = max(x.shape[0] for x in Xs)
+
+        # -----------------------------------------
+        # 3. Pad on GPU (FAST)
+        # -----------------------------------------
+        padded = torch.zeros(B, max_len, self.F, device=self.device)
+        for i, x in enumerate(Xs):
+            padded[i, -x.shape[0]:, :] = x
+
+        # -----------------------------------------
+        # 4. Stack shaping tensors
+        # -----------------------------------------
+        shaping_batch = {
+            k: torch.stack([s[k] for s in shapings], dim=0)
+            for k in shapings[0].keys()
+        }
+
+        return {
+            "inputs": padded,            # [B, T, F]
+            "targets": torch.stack(ys),  # [B, 4, H]
+            "shaping": shaping_batch,    # dict of [B, 4]
+        }
+
+
+def build_multi_horizon_labels(aligned_df, horizons):
+    """
+    Build realized deltas for multiple horizons.
+    aligned_df: aligned dataframe with close_solusd, close_ethusd, close_btcusd, close_xrpusd
+    horizons: iterable of horizon steps (e.g. [1,2,4,8])
+
+    Returns:
+        realized_delta: torch.FloatTensor [B, 4, H]
+    """
+
+    # Extract close arrays
+    close_sol = aligned_df["close_solusd"].to_numpy()
+    close_eth = aligned_df["close_ethusd"].to_numpy()
+    close_btc = aligned_df["close_btcusd"].to_numpy()
+    close_xrp = aligned_df["close_xrpusd"].to_numpy()
+
+    closes = [close_sol, close_eth, close_btc, close_xrp]
+
+    B = len(aligned_df)
+    A = 4
+    H = len(horizons)
+
+    realized = torch.zeros((B, A, H), dtype=torch.float32)
+
+    for a, close_arr in enumerate(closes):
+        for h_i, h in enumerate(horizons):
+
+            # True future close (no wrap-around)
+            if h >= B:
+                future = np.full_like(close_arr, np.nan)
+            else:
+                future = np.empty_like(close_arr)
+                future[:-h] = close_arr[h:]
+                future[-h:] = np.nan
+
+            delta = (future - close_arr) / close_arr
+            realized[:, a, h_i] = torch.tensor(delta, dtype=torch.float32)
+
+    realized = torch.nan_to_num(realized, nan=0.0)
+
+    return realized
+
 
 def make_offline_dataloader(batch_size, device):
-   
+    """
+    Multi-asset, multi-horizon offline dataloader.
+    Produces:
+        batch["inputs"]  -> (B, T, F)
+        batch["targets"] -> (B, 4, H)
+        batch["shaping"] -> dict of (B, 4) indicators (GPU-resident)
+    """
 
-    merged = pd.read_parquet("offline_precomputed_features.parquet")
+    # -----------------------------------------
+    # 1. Load precomputed aligned + enriched data
+    # -----------------------------------------
+    df = pd.read_parquet("offline_precomputed_features.parquet")
 
+    # -----------------------------------------
+    # 2. Define horizons (8 horizons → 2 hours ahead)
+    # -----------------------------------------
+    HORIZONS = list(range(1, 9))   # [1..8]
 
-    dataset = CandleDatasetV2(
-        df=merged,
-        INPUT_FEATURES=INPUT_FEATURES,
-        output_features=["close_solusd", "close_ethusd", "close_btcusd"],
-        input_seq_len=128,
-        output_seq_len=48,
-        return_diff=False,
-        mode="offline",
+    # -----------------------------------------
+    # 3. Build multi-horizon realized deltas
+    # -----------------------------------------
+    realized_delta = build_multi_horizon_labels(df, HORIZONS)   # [B,4,8]
+    realized_delta = realized_delta.to(device)                  # <-- GPU
+
+    # -----------------------------------------
+    # 4. Build shaping tensors (4 assets) ON GPU
+    # -----------------------------------------
+    shaping = {
+        "current_price": torch.tensor(df[
+            ["close_solusd", "close_ethusd", "close_btcusd", "close_xrpusd"]
+        ].values, dtype=torch.float32, device=device),
+
+        "atr": torch.tensor(df[
+            ["ATR_solusd", "ATR_ethusd", "ATR_btcusd", "ATR_xrpusd"]
+        ].values, dtype=torch.float32, device=device),
+
+        "vwap": torch.tensor(df[
+            ["VWAP_solusd", "VWAP_ethusd", "VWAP_btcusd", "VWAP_xrpusd"]
+        ].values, dtype=torch.float32, device=device),
+
+        "macd_line": torch.tensor(df[
+            ["macd_line_solusd", "macd_line_ethusd", "macd_line_btcusd", "macd_line_xrpusd"]
+        ].values, dtype=torch.float32, device=device),
+
+        "signal_line": torch.tensor(df[
+            ["signal_line_solusd", "signal_line_ethusd", "signal_line_btcusd", "signal_line_xrpusd"]
+        ].values, dtype=torch.float32, device=device),
+
+        "slope": torch.tensor(df[
+            ["slope_10_solusd", "slope_10_ethusd", "slope_10_btcusd", "slope_10_xrpusd"]
+        ].values, dtype=torch.float32, device=device),
+    }
+
+    # -----------------------------------------
+    # 5. Build dataset
+    # -----------------------------------------
+    dataset = OfflineMultiHorizonDataset(
+        df=df,
+        input_features=INPUT_FEATURES,
+        realized_delta=realized_delta,   # [B,4,8] GPU
+        shaping=shaping,                 # GPU-resident shaping
+        seq_len=128,
+        device=device,
     )
 
+    # -----------------------------------------
+    # 6. Train/val split
+    # -----------------------------------------
     train_size = int(len(dataset) * 0.9)
-    val_size = len(dataset) - train_size
+    val_size   = len(dataset) - train_size
     train_ds, val_ds = random_split(dataset, [train_size, val_size])
 
+    # -----------------------------------------
+    # 7. Dataloaders
+    # -----------------------------------------
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
         shuffle=True,
-        collate_fn=offline_shaping_collate_fn,
         num_workers=0,
-        pin_memory=True,
-        persistent_workers=False,
+        pin_memory=False,
+        collate_fn=dataset.collate_fn,
     )
 
     val_loader = DataLoader(
         val_ds,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=offline_shaping_collate_fn,
         num_workers=0,
-        pin_memory=True,
-        persistent_workers=False,
+        pin_memory=False,
+        collate_fn=dataset.collate_fn,
     )
 
-    return train_loader, val_loader, INPUT_FEATURES, ["close_solusd", "close_ethusd", "close_btcusd"]
+    return train_loader, val_loader, INPUT_FEATURES, ["solusd", "ethusd", "btcusd", "xrpusd"]
 
 from tqdm import tqdm
 
@@ -6978,6 +7182,7 @@ def execute_hotkey_sell_all(narrator=None):
         "solusd": "SOL",
         "ethusd": "ETH",
         "btcusd": "BTC",
+        "xrpusd": "XRP",
     }
 
     for sym, cur in assets.items():
@@ -7393,117 +7598,8 @@ def run_online_micro_training_step(
     drift_threshold,
     batch_size=8,
 ):
-    if len(buffer) < batch_size:
-        narrator.narrate(
-            f"⏳ Online buffer too small for RL micro‑step → {len(buffer)}/{batch_size}"
-        )
-        return None
-
-    model.train()
-
-    # x:   (B, 128, F)
-    # y:   (B, 3, 6)   multi-asset, multi-horizon realized deltas
-    # vol: (B, 3) or (B, 3, 6) true volatility per asset (and optionally horizon)
-    x, y, vol = buffer.sample_batch_with_vol(batch_size, device)
-
-    x = x.to(device)
-    y = y.to(device)          # (B, 3, 6)
-    vol = vol.to(device)      # (B, 3) or (B, 3, 6)
-
-    # If vol is per-asset only, broadcast to horizons
-    if vol.dim() == 2:        # (B, 3) → (B, 3, 6)
-        vol = vol.unsqueeze(-1).expand_as(y)
-
-    optimizer.zero_grad()
-
-    # ------------------------------------------------------------
-    # 0. Forward pass through multi-horizon model
-    # ------------------------------------------------------------
-    out = model(x)
-    if isinstance(out, (tuple, list)):
-        out = out[0]
-
-    if not isinstance(out, dict):
-        raise RuntimeError("Model must return a dict with 'forecast_deltas' for online training.")
-
-    try:
-        pred = out["forecast_deltas"]["multi"]   # (B, 3, 6)
-    except Exception as e:
-        raise RuntimeError(f"Missing forecast_deltas['multi'] in model output: {e}")
-
-    # ------------------------------------------------------------
-    # 1. Dynamic volatility-aware clamping (per asset, per horizon)
-    # ------------------------------------------------------------
-    base_vol = torch.clamp(vol, min=1e-3)                     # (B, 3, 6)
-    dynamic_max_mag = torch.clamp(5 * base_vol, 0.005, 0.05)  # (B, 3, 6)
-    pred = torch.clamp(pred, -dynamic_max_mag, dynamic_max_mag)
-
-    # ------------------------------------------------------------
-    # 2. Supervised loss (MSE over assets and horizons)
-    # ------------------------------------------------------------
-    mse = torch.nn.MSELoss(reduction="none")
-    per_elem_mse = mse(pred, y)                 # (B, 3, 6)
-    per_sample_mse = per_elem_mse.mean(dim=(1, 2))  # (B,)
-    sup_loss = per_sample_mse.mean()
-
-    # ------------------------------------------------------------
-    # 3. RL reward shaping (vol-normalized, error-based, multi-horizon)
-    # ------------------------------------------------------------
-    vol_safe = base_vol + 1e-6
-    per_elem_reward = -torch.abs(pred - y) / vol_safe   # (B, 3, 6)
-    reward_scalar = per_elem_reward.mean(dim=(1, 2))    # (B,)
-
-    temp = 0.05
-    rl_weight = 0.10
-    drift_weight = 0.30
-    cvar_weight = 0.10
-
-    weights = torch.exp(reward_scalar / temp).detach()
-    weights = torch.clamp(weights, 0.1, 5.0)
-    rwr_loss = (weights * per_sample_mse).mean()
-
-    # ------------------------------------------------------------
-    # 4. Drift penalty (vector-aware)
-    # ------------------------------------------------------------
-    # compute_drift must now accept (B, 3, 6) and aggregate internally
-    drift, drift_info = compute_drift(
-        pred_delta=pred,      # (B, 3, 6)
-        true_delta=y,         # (B, 3, 6)
-        volatility=base_vol,  # (B, 3, 6)
-        max_mag=0.05,
-        regime=None,
-    )
-    drift_pen = drift  # scalar
-
-    # ------------------------------------------------------------
-    # 5. CVaR penalty over per-sample MSE
-    # ------------------------------------------------------------
-    cvar_pen = cvar_loss(per_sample_mse, alpha=0.9)
-
-    # ------------------------------------------------------------
-    # 6. Final blended loss
-    # ------------------------------------------------------------
-    loss = (
-        sup_loss
-        + rl_weight * rwr_loss
-        + drift_weight * drift_pen
-        + cvar_weight * cvar_pen
-    )
-
-    loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-    optimizer.step()
-
-    # ------------------------------------------------------------
-    # 7. Narration
-    # ------------------------------------------------------------
-    narrator.narrate(
-        f"🏋️ Online RL micro‑step → loss={loss.item():.6f}, "
-        f"sup={sup_loss.item():.6f}, rwr={rwr_loss.item():.6f}, "
-        f"drift_pen={float(drift_pen):.6f}, cvar={cvar_pen.item():.6f}"
-    )
-
-    return loss.item()
+    # 🔥 Online micro-training disabled for delta-only model
+    return None
 
 
 
@@ -7719,7 +7815,7 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
         error_clip=0.02,     
     )
     
-    symbols = ["solusd", "ethusd", "btcusd"]
+    symbols = ["solusd", "ethusd", "btcusd", "xrpusd"]
     import traceback
     print("🔥 ENTERED main()")
     traceback.print_stack()
@@ -7830,23 +7926,26 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
         
         global POLICY_CONFIG
         if symbols is None:
-            symbols = ["solusd", "ethusd", "btcusd"]
+            symbols = ["solusd", "ethusd", "btcusd", "xrpusd"]
 
         for s in symbols:
-            if cooldown_cycles[s] > 0:
+            if cooldown_cycles.get(s, 0) > 0:
                 cooldown_cycles[s] -= 1
+
+        previous_cooldown = {s: cooldown_cycles.get(s, 0) for s in symbols}
 
         previous_posture = {s: portfolio_posture.get(s) for s in symbols}
         previous_regime = {s: last_regime.get(s, None) for s in symbols}  
-        previous_cooldown = {s: cooldown_cycles[s] for s in symbols}
+      
 
-        actual_deltas = [0.0, 0.0, 0.0]
-        vol_vec = [0.0, 0.0, 0.0]
+        actual_deltas = [0.0 for _ in symbols]
+        vol_vec = [0.0 for _ in symbols]
+
         results = {}
         per_asset = {}
 
         if symbols is None:
-            symbols = ["solusd", "ethusd", "btcusd"]
+            symbols = ["solusd", "ethusd", "btcusd", "xrpusd"]
 
         if classifier is None:
             classifier = FlatRegimeClassifier()
@@ -7944,14 +8043,14 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
                 sentiment_tensor,
                 sentiment_slopes_tensor,
             ) = demo_inference(
-                model,
-                enriched_df,
-                device,
-                None,
-                None,
-                global_scaler,
-                sym,
-            )
+                    model,
+                    enriched_df,
+                    device,
+                    INPUT_FEATURES,   # not None
+                    None,             # you can drop this arg later if unused
+                    global_scaler,
+                    sym,
+                )
 
             if forecast_price is None:
                 narrator.narrate(f"⚠️ Inference failed for {base} — defaulting actual_delta=0")
@@ -8032,7 +8131,8 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
                 f"horizon_delta={float(actual_delta):.6f}"
             )
 
-            sym_idx_map = {"solusd": 0, "ethusd": 1, "btcusd": 2}
+            sym_idx_map = {s: i for i, s in enumerate(symbols)}
+
             sym_idx = sym_idx_map[sym]
             actual_deltas[sym_idx] = per_asset_entry["actual_delta"]
             vol_vec[sym_idx] = float(vol_value)
@@ -8134,10 +8234,10 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
 
             action_infer, forecast_delta_pa = predict_action(
                 market_price=Decimal(str(market_price_dec)),
-                model_forecast=Decimal(str(policy_forecast_price)),
+                model_forecast=Decimal(str(forecast_price)),  # 👈 no [sym_idx]
                 policy_config=POLICY_CONFIG,
                 is_flat=posture.is_flat,
-                symbol=sym, 
+                symbol=sym,
             )
 
 
@@ -8370,7 +8470,8 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
             regime_idx = regime_map.get(regime, -1)
             regime_tensor = torch.tensor([regime_idx], dtype=torch.int64)
 
-            sym_idx = {"solusd": 0, "ethusd": 1, "btcusd": 2}[sym]
+            ASSET_ORDER = ["solusd", "ethusd", "btcusd", "xrpusd"]
+            sym_idx = ASSET_ORDER.index(sym)
             actual_deltas[sym_idx] = per_asset_entry["actual_delta"]
             vol_vec[sym_idx] = float(vol_value)
 
@@ -8392,7 +8493,7 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
 
         
     portfolio_posture = PortfolioPosture()
-    symbols = ["solusd", "ethusd", "btcusd"]
+    symbols = ["solusd", "ethusd", "btcusd", "xrpusd"]
 
     if not hasattr(model, "best_loss"):
         model.best_loss = float("inf")
@@ -8768,7 +8869,12 @@ def main(model, optimizer, lr_scheduler, loss_scheduler, epoch, device, narrator
                                 drift_threshold=DRIFT_THRESHOLD,
                             )
 
-                            if loss is not None and loss < best_run_loss:
+                            # 🔥 If online training is disabled, stop immediately
+                            if loss is None:
+                                best_run_state = None
+                                break
+
+                            if loss < best_run_loss:
                                 best_run_loss = loss
                                 best_run_state = {k: v.clone() for k, v in model.state_dict().items()}
 

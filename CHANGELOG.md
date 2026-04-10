@@ -144,6 +144,7 @@ This project uses **Semantic Versioning** and the **Keep a Changelog** format.
 - Emotional memory engine.
 - Sentiment‑aware reasoning.
 - Narratable decision‑making.
+<<<<<<< HEAD
 - Core API integration.
 
 ---
@@ -153,3 +154,6 @@ This project uses **Semantic Versioning** and the **Keep a Changelog** format.
 - Early prototype of Scarlet’s architecture.
 - Initial emotional‑memory scaffolding.
 - First interpretable reasoning experiments.
+=======
+- Core API integration.
+>>>>>>> 5205bd7 (v1.6.1: Multi-asset alignment, GPU-accelerated dataset, vectorized reward, 2s epochs, XRP support, full pipeline rewrite)
