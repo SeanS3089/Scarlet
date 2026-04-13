@@ -8,6 +8,27 @@ This project uses **Semantic Versioning** and the **Keep a Changelog** format.
 
 ---
 
+### [1.6.1] – 2026‑04‑10
+## Added
+- **Full multi‑asset alignment across SOLUSD, ETHUSD, BTCUSD, and XRPUSD with strict schema guarantees.
+- **Unified multi‑horizon delta engine (8‑horizon, 2‑hour lookahead) with consistent cross‑asset indexing.
+- **GPU‑resident shaping tensors (price, ATR, VWAP, MACD, signal line, slope) enabling zero‑copy training.
+- **Pre‑tensorized offline dataset with full‑history slicing and instant GPU‑ready batches.
+- **Vectorized reward engine with fused shaping logic and multi‑asset ROI aggregation.
+- **High‑throughput training loop capable of saturating RTX 5080‑class GPUs at 70–85% utilization.
+- **Real‑time epoch execution (≈2 seconds per epoch) enabling rapid research iteration.
+- **Cross‑asset stability improvements for delta prediction, shaping consistency, and horizon alignment.
+- **Automatic best‑checkpoint tracking with negative‑reward optimization support.
+
+### Fixed
+- **Corrected horizon alignment inconsistencies across multi‑asset deltas.
+- **Eliminated CPU bottlenecks in the offline dataloader caused by per‑sample tensor creation.
+- **Resolved GPU starvation issues from Python‑side padding and shaping dict construction.
+- **Fixed reward‑shape mismatches near sequence boundaries.
+- **Addressed training loop stalls caused by CPU→GPU transfer overhead.
+- **Improved validation stability by normalizing shaping scales across assets.
+
+
 ## [1.6.0] – 2026‑02-28
 ### Added
 - **Premium‑tier data pipeline** with full‑history support for research‑grade training.

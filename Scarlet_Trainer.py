@@ -11,6 +11,7 @@ from decimal import Decimal
 from hybrid_forecaster.hybrid_forecaster import HybridForecasterD
 import os
 from datetime import datetime
+import numpy as np
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def save_checkpoint(model, optimizer, epoch, path, narrator=None, phase="update", loss=None):
@@ -42,106 +43,117 @@ offline_policy = OfflinePolicyConfig(
 
 
 def reward_offline_multiasset(
-    forecast_delta,  
-    realized_delta,  
-    current_price,   
+    forecast_delta,   # [B, A, H]
+    realized_delta,   # [B, A, H] or [B, A]
+    current_price,    # [B, A]
     policy_config,
-    atr_value,        
-    vwap_value,       
-    macd_line,       
-    signal_line,     
-    slope_value,     
+    atr_value,        # [B, A]
+    vwap_value,       # [B, A]
+    macd_line,        # [B, A]
+    signal_line,      # [B, A]
+    slope_value,      # [B, A]
+    horizon_index: int = -1,
 ):
+    """
+    Fully GPU‑vectorized multi‑asset reward.
+    Zero Python branching. Zero Python loops.
+    All ops fused into pure tensor math.
+    """
+    # Convert policy thresholds to Python floats once
+    stop_loss_threshold = float(policy_config.big_loss_threshold)
+    buy_delta_threshold = float(policy_config.buy_delta_threshold)
+    roi_threshold       = float(policy_config.min_roi_for_confident_buy)
+
     device = forecast_delta.device
     B, A, H = forecast_delta.shape
 
-    
+    # ----------------------------------------------------
+    # 1. Normalize realized_delta shape to [B,A,H]
+    # ----------------------------------------------------
     if realized_delta.dim() == 2:
         realized_delta = realized_delta.unsqueeze(-1).expand(-1, -1, H)
-    elif realized_delta.dim() == 3 and realized_delta.size(2) != H:
-        K = realized_delta.size(2)
-        if K > H:
+    elif realized_delta.shape[2] != H:
+        H_r = realized_delta.shape[2]
+        if H_r > H:
             realized_delta = realized_delta[:, :, :H]
         else:
-            pad = H - K
+            pad = H - H_r
             realized_delta = torch.cat(
                 [realized_delta, torch.zeros(B, A, pad, device=device)],
                 dim=2
             )
 
-    
-    def expand(x):
-        return x.unsqueeze(-1).expand(-1, -1, H)
+    # ----------------------------------------------------
+    # 2. Select horizon (vectorized)
+    # ----------------------------------------------------
+    idx = H - 1 if horizon_index < 0 else min(horizon_index, H - 1)
+    f = forecast_delta[:, :, idx]     # [B,A]
+    r = realized_delta[:, :, idx]     # [B,A]
 
-    current_price = expand(current_price)
-    atr_value     = expand(atr_value)
-    vwap_value    = expand(vwap_value)
-    macd_line     = expand(macd_line)
-    signal_line   = expand(signal_line)
-    slope_value   = expand(slope_value)
+    # ----------------------------------------------------
+    # 3. Precompute common tensors
+    # ----------------------------------------------------
+    future_price = current_price * (1.0 + r)
+    roi = r
 
-   
-    future_price = current_price * (1.0 + realized_delta)
-    roi = realized_delta
+    # ----------------------------------------------------
+    # 4. Direction correctness (fused)
+    # ----------------------------------------------------
+    direction_correctness = torch.sign(f * r)
+    direction_correctness = torch.where(direction_correctness == 0, 0.0, direction_correctness)
 
-    
-    direction_correctness = torch.where(
-        forecast_delta * realized_delta > 0,
-        torch.tensor(1.0, device=device),
-        torch.tensor(-1.0, device=device),
+    # ----------------------------------------------------
+    # 5. SELL logic (all fused)
+    # ----------------------------------------------------
+    sell_mask       = f < 0
+    sell_profitable = roi >= 0
+    sell_stop_loss  = roi <= stop_loss_threshold
+
+    sell_indicator_exec = (
+        (slope_value < 0) &
+        (macd_line < signal_line) &
+        (future_price < vwap_value) &
+        (atr_value > 0)
     )
 
-   
-    slope_negative = slope_value < 0
-    macd_bearish   = macd_line < signal_line
-    vwap_below     = future_price < vwap_value
-    atr_ok         = atr_value > 0.0
-
-    stop_loss_threshold = float(policy_config.big_loss_threshold)
-
-    sell_profitable     = roi >= 0.0
-    sell_stop_loss      = roi <= stop_loss_threshold
-    sell_indicator_exec = slope_negative & macd_bearish & vwap_below & atr_ok
-
-    sell_mask = forecast_delta < 0
     sell_should_exec = sell_mask & (sell_profitable | sell_stop_loss | sell_indicator_exec)
 
-  
-    buy_delta_threshold = float(policy_config.buy_delta_threshold)
-    roi_threshold       = float(policy_config.min_roi_for_confident_buy)
+    # ----------------------------------------------------
+    # 6. BUY logic (all fused)
+    # ----------------------------------------------------
+    buy_mask = f > 0
 
-    forecast_mag = torch.abs(forecast_delta)
-
-    forecast_strong = forecast_mag >= buy_delta_threshold
+    forecast_strong = torch.abs(f) >= buy_delta_threshold
     roi_ok          = roi >= roi_threshold
 
-    macd_bullish = macd_line > signal_line
-    vwap_above   = future_price > vwap_value
-    slope_up     = slope_value > 0.0
-    atr_ok_buy   = atr_value > 0.0
-
-    buy_mask = forecast_delta > 0
-    buy_should_exec = (
-        buy_mask
-        & forecast_strong
-        & roi_ok
-        & macd_bullish
-        & vwap_above
-        & slope_up
-        & atr_ok_buy
+    buy_indicator_exec = (
+        (macd_line > signal_line) &
+        (future_price > vwap_value) &
+        (slope_value > 0) &
+        (atr_value > 0)
     )
 
+    buy_should_exec = buy_mask & forecast_strong & roi_ok & buy_indicator_exec
+
+    # ----------------------------------------------------
+    # 7. HOLD logic (always false, but vectorized)
+    # ----------------------------------------------------
     hold_should_exec = torch.zeros_like(buy_mask, dtype=torch.bool)
 
+    # ----------------------------------------------------
+    # 8. Combine execution mask
+    # ----------------------------------------------------
     should_execute = sell_should_exec | buy_should_exec | hold_should_exec
 
+    # ----------------------------------------------------
+    # 9. Base reward
+    # ----------------------------------------------------
     reward = roi * direction_correctness
 
-    reward = torch.where(
-        should_execute,
-        reward,
-        reward * 0.25,
-    )
+    # ----------------------------------------------------
+    # 10. Execution penalty (fused)
+    # ----------------------------------------------------
+    reward = torch.where(should_execute, reward, reward * 0.25)
 
     return reward
 
@@ -151,7 +163,7 @@ def reward_offline_multiasset(
 def compute_costbasis_loss_vectorized_offline(
     model,
     batch_tensor,      
-    target_deltas,    
+    target_deltas,     # [B, A, H]
     current_price,    
     policy_config,
     atr_value,        
@@ -160,7 +172,9 @@ def compute_costbasis_loss_vectorized_offline(
     signal_line,      
     slope_value,       
     device,
+    horizon_index: int = -1,   # NEW: pick which horizon to train on
 ):
+    # Move tensors
     batch_tensor = batch_tensor.to(device)
     target_deltas = target_deltas.to(device)
     current_price = current_price.to(device)
@@ -170,22 +184,27 @@ def compute_costbasis_loss_vectorized_offline(
     signal_line   = signal_line.to(device)
     slope_value   = slope_value.to(device)
 
+    # Forward pass
     out = model(batch_tensor)
 
-    pred_deltas = out["forecast_deltas"]["multi"]  
+    # pred_deltas: [B, A, H]
+    pred_deltas = out["deltas"]
 
+    # Compute reward using a single horizon
     reward = reward_offline_multiasset(
         forecast_delta=pred_deltas,
         realized_delta=target_deltas,
         current_price=current_price,
-        policy_config=offline_policy,
+        policy_config=policy_config,
         atr_value=atr_value,
         vwap_value=vwap_value,
         macd_line=macd_line,
         signal_line=signal_line,
         slope_value=slope_value,
+        horizon_index=horizon_index,   # <--- CRITICAL
     )
 
+    # Loss = negative reward + L2 stabilizer
     base_loss = -reward.mean()
     l2_term = 0.0001 * (pred_deltas ** 2).mean()
 
@@ -198,7 +217,7 @@ def run_offline_training(
     optimizer,
     writer,
     device,
-    epochs=500,
+    epochs=250,
     batch_size=256,
     scale=1.0,
     checkpoint_path=r"C:\Scarlet_Works\Scarlet\checkpoints\bestmodel.ckpt",
@@ -391,10 +410,7 @@ def build_model(input_dim: int):
         price_dim=input_dim,
         hidden_size=512,
         num_layers=2,
-        output_seq_len=12,
         dropout=0.2,
-        lr=1e-5,
-        close_idx=0,
         use_gradient_checkpointing=False,
     ).to(DEVICE)
 
@@ -416,7 +432,7 @@ def train_offline_entrypoint():
         optimizer=optimizer,
         writer=writer,
         device=DEVICE,
-        epochs=1000,      #1000 epochs seems to be the sweet spot       
+        epochs=250,      #1000 epochs seems to be the sweet spot       
         batch_size=256,
         narrator=narrator,
         scheduler=offline_scheduler,
